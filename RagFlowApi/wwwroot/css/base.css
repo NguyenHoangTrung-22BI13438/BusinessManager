@@ -1,0 +1,197 @@
+/* ── Tokens ─────────────────────────────────────────────────────────────── */
+:root {
+    --bg: #0f1117;
+    --bg-card: #181c27;
+    --bg-input: #1e2335;
+    --bg-sidebar: #13161f;
+    --bg-bubble-user: #2a3560;
+    --bg-bubble-ai: #1e2335;
+    --border: #2a2f45;
+    --border-focus: #4f6ef7;
+    --accent: #4f6ef7;
+    --accent-hover: #3a57e8;
+    --text-primary: #e8eaf2;
+    --text-muted: #7880a0;
+    --text-subtle: #4a5070;
+    --success: #2dd4a0;
+    --error: #f76f6f;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --navbar-h: 60px;
+    --sidebar-w: 260px;
+    --font: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'DM Mono', monospace;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    font-family: var(--font);
+    background-color: var(--bg);
+    color: var(--text-primary);
+    line-height: 1.6;
+    font-size: 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Navbar ──────────────────────────────────────────────────────────────── */
+.navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: var(--navbar-h);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+    flex-shrink: 0;
+    z-index: 100;
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.nav-logo {
+    font-size: 22px;
+    color: var(--accent);
+}
+
+.nav-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+
+.nav-links {
+    display: flex;
+    gap: 4px;
+}
+
+.nav-link {
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: background .15s, color .15s;
+}
+
+    .nav-link:hover {
+        background: var(--bg-input);
+        color: var(--text-primary);
+    }
+
+.nav-link--subtle {
+    font-size: 13px;
+}
+
+/* ── Page body (fills remaining height) ─────────────────────────────────── */
+.page-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+}
+
+/* ── Card (kept for any future non-chat pages) ──────────────────────────── */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    margin-bottom: 20px;
+}
+
+/* ── Buttons (shared) ────────────────────────────────────────────────────── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: background .15s, transform .1s;
+    text-decoration: none;
+}
+
+    .btn:active {
+        transform: scale(.98);
+    }
+
+.btn--primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+    .btn--primary:hover {
+        background: var(--accent-hover);
+    }
+
+/* ── Alerts ──────────────────────────────────────────────────────────────── */
+.alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    border: 1px solid transparent;
+    margin: 8px 16px;
+}
+
+.alert--info {
+    background: rgba(79,110,247,.08);
+    border-color: rgba(79,110,247,.25);
+    color: var(--accent);
+}
+
+.alert--success {
+    background: rgba(45,212,160,.08);
+    border-color: rgba(45,212,160,.25);
+    color: var(--success);
+}
+
+.alert--error {
+    background: rgba(247,111,111,.08);
+    border-color: rgba(247,111,111,.25);
+    color: var(--error);
+}
+
+.inline-link {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+/* ── Scrollbar styling ───────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-subtle);
+    }

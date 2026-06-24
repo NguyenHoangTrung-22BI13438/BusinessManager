@@ -1,0 +1,98 @@
+@page
+@model RagFlowApi.Pages.AccountModel
+@{
+    Layout = null;   // JS fetches this page bare; no chrome needed
+    var rec = Model.Record;
+    var initials = string.IsNullOrWhiteSpace(rec?.DisplayName)
+        ? "?"
+        : rec.DisplayName.Substring(0, 1).ToUpper();
+    var joinedDate = rec is not null
+        ? rec.CreatedAt.ToString("MMMM d, yyyy")
+        : "—";
+}
+
+@* ── This element is extracted by JS and injected into the modal ── *@
+<div id="account-modal-body">
+
+    @* ── User info ──────────────────────────────────────────────────────── *@
+    <div class="user-info-row">
+        <div class="user-info-avatar">@initials</div>
+        <div class="user-info-meta">
+            <span class="user-info-display">@(rec?.DisplayName ?? "—")</span>
+            <span class="user-info-username">@@@(rec?.Username ?? "—")</span>
+            <span class="user-info-date">Member since @joinedDate</span>
+        </div>
+        <div style="margin-left:auto">
+            @if (rec?.IsAdmin == true)
+            {
+                <span class="user-info-badge user-info-badge--admin">⬡ Admin</span>
+            }
+            else
+            {
+                <span class="user-info-badge user-info-badge--user">User</span>
+            }
+        </div>
+    </div>
+
+    <div class="modal-section-divider"></div>
+
+    @* ── Change password ─────────────────────────────────────────────────── *@
+    <div>
+        <p class="modal-section-title">Change password</p>
+
+        @* Feedback (shown after submit) *@
+        @if (!string.IsNullOrWhiteSpace(Model.FeedbackMsg))
+        {
+            <div id="modal-feedback"
+                 class="modal-alert @(Model.FeedbackOk ? "modal-alert--success" : "modal-alert--error")"
+                 style="margin-bottom:12px">
+                @(Model.FeedbackOk ? "✓" : "⚠") @Model.FeedbackMsg
+            </div>
+        }
+        else
+        {
+            @* Empty placeholder so JS can always find #modal-feedback *@
+            <div id="modal-feedback" style="display:none"></div>
+        }
+
+        <form id="changePwForm" class="modal-form"
+              method="post"
+              asp-page-handler="ChangePassword">
+            @Html.AntiForgeryToken()
+            <div class="modal-field">
+                <label class="modal-label" for="currentPw">Current password</label>
+                <input class="modal-input"
+                       type="password"
+                       id="currentPw"
+                       name="currentPassword"
+                       placeholder="Enter current password"
+                       autocomplete="current-password"
+                       required />
+            </div>
+            <div class="modal-field">
+                <label class="modal-label" for="newPw">New password</label>
+                <input class="modal-input"
+                       type="password"
+                       id="newPw"
+                       name="newPassword"
+                       placeholder="At least 6 characters"
+                       autocomplete="new-password"
+                       required />
+            </div>
+            <div class="modal-field">
+                <label class="modal-label" for="confirmPw">Confirm new password</label>
+                <input class="modal-input"
+                       type="password"
+                       id="confirmPw"
+                       name="confirmPassword"
+                       placeholder="Repeat new password"
+                       autocomplete="new-password"
+                       required />
+            </div>
+            <button type="submit" class="btn btn--primary modal-submit">
+                Update password
+            </button>
+        </form>
+    </div>
+
+</div>

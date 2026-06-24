@@ -1,0 +1,313 @@
+@page
+@model RagFlowApi.Pages.DocumentsModel
+@{
+    ViewData["Title"] = "Documents";
+    Layout = "_Layout";
+}
+
+@functions {
+    private static string FileIcon(string type) => type?.ToLower() switch
+    {
+        "pdf" => "📄",
+        "doc" or "docx" => "📝",
+        "xls" or "xlsx" => "📊",
+        "ppt" or "pptx" => "📽",
+        "txt" or "md" => "📃",
+        var x when x?.StartsWith("image") == true => "🖼",
+        _ => "📁"
+    };
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1024.0 / 1024.0:F1} MB";
+    }
+
+    private static string FormatDate(long unixMs) => unixMs == 0
+        ? "—"
+        : DateTimeOffset.FromUnixTimeMilliseconds(unixMs).LocalDateTime.ToString("MMM d, HH:mm");
+
+    private string SortHref(string column)
+    {
+        var nextDir = Model.CurrentSort == column && Model.CurrentDir == "asc" ? "desc" : "asc";
+        return $"?sort={column}&dir={nextDir}";
+    }
+
+    private string SortArrow(string column) =>
+        Model.CurrentSort != column ? "" : Model.CurrentDir == "asc" ? " ▲" : " ▼";
+}
+
+<section class="docs-shell">
+    <header class="docs-header">
+        <div>
+            <h1 class="docs-title">Documents</h1>
+            <p class="docs-subtitle">@Model.Documents.Count file@(Model.Documents.Count == 1 ? "" : "s") in your knowledge base</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
+                  id="docsUploadForm" class="docs-upload-form">
+                <label for="docsUpload" class="btn btn--primary" id="docsUploadLabel">+ Upload files</label>
+                <input type="file" id="docsUpload" name="files" multiple
+                       accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.md,.png,.jpg,.jpeg"
+                       class="visually-hidden-input" />
+            </form>
+            <button type="button" id="batchReparseBtn"
+                    class="btn-icon btn-icon--wide"
+                    style="display:none; flex-shrink:0" title="Reparse selected">
+                ↻ Reparse selected
+            </button>
+            <button type="button" id="batchDeleteBtn"
+                    class="btn-icon btn-icon--wide btn-icon--danger"
+                    style="display:none; flex-shrink:0" title="Delete selected">
+                🗑 Delete selected
+            </button>
+        </div>
+    </header>
+
+    @* Job progress banners injected here by JS *@
+    <div id="docsJobBanners" style="margin-bottom:8px"></div>
+
+    @if (!Model.Documents.Any())
+    {
+        <div class="docs-empty">
+            <span class="docs-empty-icon">📂</span>
+            <p class="docs-empty-title">No documents yet</p>
+            <p class="docs-empty-sub">Click + Upload files to add your first file.</p>
+        </div>
+    }
+    else
+    {
+        <div class="docs-table-wrap">
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th style="width:1%; white-space:nowrap; text-align:center">
+                            <input type="checkbox" id="selectAll" title="Select all" />
+                        </th>
+                        <th><a href="@SortHref("name")" class="crumb-link">Name@(SortArrow("name"))</a></th>
+                        <th><a href="@SortHref("size")" class="crumb-link">Size@(SortArrow("size"))</a></th>
+                        <th><a href="@SortHref("status")" class="crumb-link">Status@(SortArrow("status"))</a></th>
+                        <th><a href="@SortHref("chunks")" class="crumb-link">Chunks@(SortArrow("chunks"))</a></th>
+                        <th><a href="@SortHref("uploaded")" class="crumb-link">Uploaded@(SortArrow("uploaded"))</a></th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in Model.Documents)
+                    {
+                        <tr>
+                            <td style="width:1%; white-space:nowrap; text-align:center">
+                                <input type="checkbox" class="doc-check" value="@d.Id" data-filename="@d.Name" />
+                            </td>
+                            <td class="doc-name-cell">
+                                <span class="doc-icon">@FileIcon(d.Type)</span>
+                                @if (d.RunStatus == "DONE" || d.ChunkCount > 0)
+                                {
+                                    <a href="/DocumentChunks?id=@d.Id" class="doc-name doc-name--link" title="@d.Name">@d.Name</a>
+                                }
+                                else
+                                {
+                                    <span class="doc-name" title="@d.Name">@d.Name</span>
+                                }
+                            </td>
+                            <td>@FormatSize(d.Size)</td>
+                            <td>
+                                <span class="status-badge status-@d.RunStatus.ToLower()">
+                                    @d.RunStatus
+                                    @if (d.RunStatus == "RUNNING" && d.Progress > 0)
+                                    {
+                                        <span class="status-progress">@(((int)(d.Progress * 100)))%</span>
+                                    }
+                                </span>
+                            </td>
+                            <td>@(d.ChunkCount > 0 ? d.ChunkCount.ToString() : "—")</td>
+                            <td class="doc-date">@FormatDate(d.CreateTime)</td>
+                            <td class="doc-actions">
+                                @if (d.RunStatus is "FAIL" or "CANCEL" or "UNSTART")
+                                {
+                                    <form method="post" asp-page-handler="Reparse" class="inline-form">
+                                        <input type="hidden" name="documentId" value="@d.Id" />
+                                        <input type="hidden" name="fileName" value="@d.Name" />
+                                        <button type="submit" class="btn-icon" title="Parse / retry">↻</button>
+                                    </form>
+                                }
+                                <form method="post" asp-page-handler="Delete" class="inline-form"
+                                      onsubmit="return confirm('Delete &quot;@d.Name&quot;? This also removes its chunks from the knowledge base.');">
+                                    <input type="hidden" name="documentIds" value="@d.Id" />
+                                    <button type="submit" class="btn-icon btn-icon--danger" title="Delete">🗑</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+<div id="af-placeholder" hidden>@Html.AntiForgeryToken()</div>
+<script>
+    const selectAll      = document.getElementById('selectAll');
+    const batchBtn       = document.getElementById('batchDeleteBtn');
+    const batchReparseBtn = document.getElementById('batchReparseBtn');
+    const checkboxes     = () => [...document.querySelectorAll('.doc-check')];
+
+    function syncBatchButtons() {
+        const any = checkboxes().some(c => c.checked);
+        batchBtn.style.display        = any ? '' : 'none';
+        batchReparseBtn.style.display = any ? '' : 'none';
+    }
+
+    selectAll?.addEventListener('change', () => {
+        checkboxes().forEach(c => c.checked = selectAll.checked);
+        syncBatchButtons();
+    });
+
+    document.addEventListener('change', e => {
+        if (!e.target.classList.contains('doc-check')) return;
+        syncBatchButtons();
+        const any = checkboxes().some(c => c.checked);
+        selectAll.indeterminate = any && !checkboxes().every(c => c.checked);
+        selectAll.checked = checkboxes().every(c => c.checked);
+    });
+    // ── Async upload: intercept file selection, POST via fetch, poll status ────
+    const docsUpload     = document.getElementById('docsUpload');
+    const docsUploadForm = document.getElementById('docsUploadForm');
+    const docsUploadLbl  = document.getElementById('docsUploadLabel');
+    const banners        = document.getElementById('docsJobBanners');
+
+    const JOB_POLL_MS   = 3000;
+    const JOB_MAX_POLLS = 200;
+
+    docsUpload?.addEventListener('change', async () => {
+        if (!docsUpload.files.length) return;
+
+        // Disable button while uploading
+        docsUploadLbl.textContent = '⏳ Uploading…';
+        docsUploadLbl.style.pointerEvents = 'none';
+        docsUploadLbl.style.opacity = '0.6';
+
+        try {
+            const fd  = new FormData(docsUploadForm);  // includes antiforgery token + files
+            const res = await fetch(docsUploadForm.action, { method: 'POST', body: fd });
+
+            if (!res.ok) throw new Error(`Server ${res.status}`);
+            const data = await res.json();
+
+            if (!data.jobs?.length) {
+                showDocsBanner('alert--error', '⚠ No files were queued.');
+                return;
+            }
+
+            data.jobs.forEach(j => startDocJobPolling(j.jobId, j.fileName));
+
+        } catch (err) {
+            showDocsBanner('alert--error', `⚠ Upload failed: ${err.message}`);
+        } finally {
+            // Reset file input and button
+            docsUpload.value = '';
+            docsUploadLbl.textContent = '+ Upload files';
+            docsUploadLbl.style.pointerEvents = '';
+            docsUploadLbl.style.opacity = '';
+        }
+    });
+
+    function showDocsBanner(cls, text) {
+        if (!banners) return;
+        const d = document.createElement('div');
+        d.className = `alert ${cls}`;
+        d.style.margin = '0 0 8px';
+        d.textContent = text;
+        banners.appendChild(d);
+        if (cls !== 'alert--error') setTimeout(() => d.remove(), 6000);
+    }
+
+    function startDocJobPolling(jobId, fileName) {
+        const bannerId = `doc-job-${jobId}`;
+        const banner   = document.createElement('div');
+        banner.id        = bannerId;
+        banner.className = 'alert alert--info';
+        banner.style.margin = '0 0 8px';
+        banner.textContent = `⚙️ Processing "${fileName}"…`;
+        banners?.appendChild(banner);
+
+        let polls = 0;
+        let reloaded = false;
+        const timer = setInterval(async () => {
+            polls++;
+            if (polls > JOB_MAX_POLLS) {
+                clearInterval(timer);
+                banner.className   = 'alert alert--error';
+                banner.textContent = `⚠ "${fileName}" timed out.`;
+                return;
+            }
+            try {
+                const res = await fetch(`/ingest-status/${jobId}`);
+                if (!res.ok) return;
+                const d = await res.json();
+
+                if (d.state === 'done') {
+                    clearInterval(timer);
+                    banner.className   = 'alert alert--success';
+                    banner.textContent = `✓ "${fileName}" indexed.`;
+                    // Reload the document table once per batch (first job to finish)
+                    if (!reloaded) {
+                        reloaded = true;
+                        setTimeout(() => window.location.reload(), 1500);
+                    }
+                } else if (d.state === 'failed') {
+                    clearInterval(timer);
+                    banner.className   = 'alert alert--error';
+                    banner.textContent = `⚠ "${fileName}": ${d.message || 'ingestion failed'}`;
+                }
+            } catch {}
+        }, JOB_POLL_MS);
+    }
+
+    // Keep the old "auto-refresh while RUNNING" behaviour for docs already parsing
+    if ([...document.querySelectorAll('.status-running')].length > 0) {
+        setTimeout(() => window.location.reload(), 5000);
+    }
+        batchBtn?.addEventListener('click', async () => {
+        const ids = checkboxes().filter(c => c.checked).map(c => c.value);
+        if (!ids.length || !confirm(`Delete ${ids.length} document(s)?`)) return;
+
+        const fd = new FormData();
+        ids.forEach(id => fd.append('documentIds', id));
+        // antiforgery token
+        const token = document.querySelector('#af-placeholder input[name="__RequestVerificationToken"]')?.value;
+        if (token) fd.append('__RequestVerificationToken', token);
+
+        await fetch('?handler=Delete', { method: 'POST', body: fd });
+        window.location.reload();
+    });
+
+    batchReparseBtn?.addEventListener('click', async () => {
+        const selected = checkboxes().filter(c => c.checked);
+        if (!selected.length || !confirm(`Reparse ${selected.length} document(s)?`)) return;
+
+        const fd = new FormData();
+        selected.forEach(c => {
+            fd.append('documentIds', c.value);
+            fd.append('fileNames', c.dataset.filename);
+        });
+        const token = document.querySelector('#af-placeholder input[name="__RequestVerificationToken"]')?.value;
+        if (token) fd.append('__RequestVerificationToken', token);
+
+        batchReparseBtn.disabled = true;
+        try {
+            const res = await fetch('?handler=BatchReparse', { method: 'POST', body: fd });
+            if (!res.ok) throw new Error(`Server ${res.status}`);
+            const data = await res.json();
+            if (!data.jobs?.length) {
+                showDocsBanner('alert--error', '⚠ No documents were queued for reparse.');
+                return;
+            }
+            data.jobs.forEach(j => startDocJobPolling(j.jobId, j.fileName));
+        } catch (err) {
+            showDocsBanner('alert--error', `⚠ Batch reparse failed: ${err.message}`);
+        } finally {
+            batchReparseBtn.disabled = false;
+        }
+    });
+</script>

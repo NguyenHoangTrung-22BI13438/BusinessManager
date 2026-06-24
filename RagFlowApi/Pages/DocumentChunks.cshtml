@@ -1,0 +1,369 @@
+@page
+@model RagFlowApi.Pages.DocumentChunksModel
+@{
+    ViewData["Title"] = $"{Model.DocumentName} — Chunks";
+    Layout = "_Layout";
+    var hasImages = Model.Chunks.Any(c => !string.IsNullOrWhiteSpace(c.ImageId))
+         || Model.IsImageDocument || Model.IsPdfDocument;
+}
+@functions {
+    // ── Render chunk content: HTML table → markdown table → plain text ────────
+    private static Microsoft.AspNetCore.Html.IHtmlContent RenderChunkContent(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return new Microsoft.AspNetCore.Html.HtmlString("");
+
+        var content = raw.Trim();
+
+        // Case 1: RAGFlow sometimes stores chunk content as an HTML table directly
+        if (content.Contains("<table", StringComparison.OrdinalIgnoreCase))
+            return new Microsoft.AspNetCore.Html.HtmlString(
+                $"<div class=\"chunk-table-wrap\">{content}</div>");
+
+        // Case 2: Markdown table — at least 2 lines starting with '|'
+        var lines = content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int pipedLines = lines.Count(l => l.TrimStart().StartsWith('|'));
+        if (pipedLines >= 2)
+            return new Microsoft.AspNetCore.Html.HtmlString(MarkdownTableToHtml(lines));
+
+        // Case 3: Plain / pre-wrapped text
+        return new Microsoft.AspNetCore.Html.HtmlString(
+            "<span>" + System.Net.WebUtility.HtmlEncode(content) + "</span>");
+    }
+
+    private static string MarkdownTableToHtml(string[] lines)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<div class=\"chunk-table-wrap\"><table class=\"chunk-table\">");
+        bool headerDone = false;
+
+        foreach (var line in lines)
+        {
+            var t = line.Trim();
+            if (!t.StartsWith('|')) continue;
+
+            // Skip pure separator rows: |---|:---:|---|
+            if (System.Text.RegularExpressions.Regex.IsMatch(t, @"^\|[\s\-\|:]+\|$"))
+                continue;
+
+            var cells = t.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                         .Select(c => System.Net.WebUtility.HtmlEncode(c.Trim()))
+                         .ToArray();
+
+            if (!headerDone)
+            {
+                sb.Append("<thead><tr>");
+                foreach (var c in cells) sb.Append($"<th>{c}</th>");
+                sb.Append("</tr></thead><tbody>");
+                headerDone = true;
+            }
+            else
+            {
+                sb.Append("<tr>");
+                foreach (var c in cells) sb.Append($"<td>{c}</td>");
+                sb.Append("</tr>");
+            }
+        }
+        if (headerDone) sb.Append("</tbody>");
+        sb.Append("</table></div>");
+        return sb.ToString();
+    }
+}
+
+<div class="cv-shell">
+
+    @* ── LEFT: document image viewer ─────────────────────────────────────── *@
+    @if (hasImages)
+    {
+        <aside class="cv-doc-panel" id="docPanel">
+            <div class="cv-doc-header">
+                <nav class="breadcrumb" style="margin-bottom:0">
+                    <a href="/Documents" class="crumb-link">Documents</a>
+                    <span class="crumb-sep">›</span>
+                    <span class="crumb-current">@Model.DocumentName</span>
+                </nav>
+                <span class="cv-page-label" id="pageLabel"></span>
+            </div>
+            <div class="cv-doc-body" id="docBody">
+                @{
+                    var pageIndex = 0;
+                }
+                @foreach (var chunk in Model.Chunks.Where(c => !string.IsNullOrWhiteSpace(c.ImageId)))
+                {
+                    <figure class="cv-page-fig" id="fig-@chunk.Id" data-chunk-id="@chunk.Id">
+                        <img src="/document-image/@chunk.ImageId"
+                             alt="Page for chunk @(++pageIndex)"
+                             loading="lazy"
+                             class="cv-page-img" />
+                    </figure>
+                }
+                @if (!Model.Chunks.Any(c => !string.IsNullOrWhiteSpace(c.ImageId)) && Model.IsImageDocument)
+                {
+                    <figure class="cv-page-fig">
+                        <img src="/document-file/@Model.DocumentId"
+                             class="cv-page-img" alt="@Model.DocumentName" />
+                    </figure>
+                }
+                @if (Model.IsPdfDocument)
+                {
+                    <iframe src="/doc-cache/@(Model.DocumentId).pdf"
+                            style="width:100%; height:100%; border:none; min-height:600px;">
+                    </iframe>
+                }
+            </div>
+        </aside>
+
+        @* ── DRAG HANDLE ─────────────────────────────────────────────────── *@
+        <div class="cv-resizer" id="cvResizer" title="Drag to resize">
+            <div class="cv-resizer-grip"></div>
+        </div>
+    }
+
+    @* ── RIGHT: chunk list ────────────────────────────────────────────────── *@
+    <section class="cv-chunk-panel @(hasImages ? "" : "cv-chunk-panel--full")">
+
+        <header class="cv-chunk-header">
+            <div>
+                @if (!hasImages)
+                {
+                    <nav class="breadcrumb" style="margin-bottom:6px">
+                        <a href="/Documents" class="crumb-link">Documents</a>
+                        <span class="crumb-sep">›</span>
+                        <span class="crumb-current">@Model.DocumentName</span>
+                    </nav>
+                }
+                <h1 class="docs-title" style="font-size:16px">@Model.DocumentName</h1>
+                <p class="docs-subtitle">
+                    @Model.Chunks.Count chunk@(Model.Chunks.Count == 1 ? "" : "s")
+                    @(string.IsNullOrWhiteSpace(Model.Search) ? "indexed" : "matching")
+                </p>
+            </div>
+            <form method="get" class="chunks-search">
+                <input type="hidden" name="id" value="@Model.DocumentId" />
+                <input type="text" name="search" value="@Model.Search"
+                       placeholder="Search…" class="chunks-search-input"
+                       style="width:160px" />
+            </form>
+        </header>
+
+        @if (!Model.Chunks.Any())
+        {
+            <div class="docs-empty">
+                <span class="docs-empty-icon">📭</span>
+                <p class="docs-empty-title">
+                    @(string.IsNullOrWhiteSpace(Model.Search) ? "No chunks yet" : "No chunks match your search")
+                </p>
+                <p class="docs-empty-sub">
+                    @(string.IsNullOrWhiteSpace(Model.Search)
+                                    ? "If parsing has finished, chunks should appear here."
+                                    : "Try a different search term or clear the filter.")
+            </p>
+        </div>
+                }
+        else
+        {
+            <div class="cv-chunk-list" id="chunkList">
+                @{
+                    var idx = 0;
+                }
+                @foreach (var chunk in Model.Chunks)
+                {
+                    idx++;
+                    var hasImg = !string.IsNullOrWhiteSpace(chunk.ImageId);
+                    <article class="chunk-card @(chunk.Available ? "" : "chunk-card--disabled") @(hasImg ? "chunk-card--clickable" : "")"
+                             id="chunk-@chunk.Id"
+                             data-chunk-id="@(hasImg? chunk.Id: null)"
+                             data-image-id="@(hasImg? chunk.ImageId: null)">
+                        <header class="chunk-card-header">
+                            <span class="chunk-index">#@idx</span>
+                            <span class="chunk-status">
+                                @(chunk.Available ? "✓ Active" : "⊘ Disabled")
+                            </span>
+                            @if (hasImg)
+                            {
+                                <span class="cv-page-pin" title="Has page image">📄</span>
+                            }
+                            @if (chunk.Keywords.Any())
+                            {
+                                <div class="chunk-keywords">
+                                    @foreach (var kw in chunk.Keywords.Take(4))
+                                    {
+                                        <span class="chunk-keyword">@kw</span>
+                                    }
+                                </div>
+                            }
+                            <button type="button"
+                                    class="chunk-edit-btn"
+                                    data-chunk-id="@chunk.Id"
+                                    data-doc-id="@Model.DocumentId"
+                                    data-content="@Html.Encode(chunk.Content)"
+                                    title="Edit chunk">
+                                ✎
+                            </button>
+                        </header>
+                        <div class="chunk-content">@RenderChunkContent(chunk.Content)</div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+<div id="editModal" style="display:none;position:fixed;inset:0;
+     background:rgba(0,0,0,.5);z-index:1000;
+     align-items:center;justify-content:center">
+    <div style="background:var(--color-background-primary);border-radius:12px;
+                padding:24px;width:min(600px,90vw);
+                display:flex;flex-direction:column;gap:12px">
+        <h2 style="font-size:16px;font-weight:500;margin:0">Edit chunk</h2>
+        <form method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ChunkId" id="modalChunkId" />
+            <input type="hidden" name="DocId" id="modalDocId" />
+            <textarea name="NewContent" id="modalContent"
+                      style="width:100%;
+                 height:300px;
+                 font-family:var(--font-mono);
+                 font-size:12px;
+                 line-height:1.6;
+                 border:1px solid var(--color-border-secondary);
+                 border-radius:8px;
+                 padding:12px;
+                 resize:vertical;
+                 background:var(--color-background-secondary);
+                 color:var(--color-text-primary);
+                 white-space:pre;
+                 overflow-x:auto"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+                <button type="button" onclick="closeEdit()"
+                        style="padding:6px 16px;border-radius:6px;
+                               border:1px solid var(--color-border-secondary);
+                               background:transparent;cursor:pointer;
+                               color:var(--color-text-primary)">
+                    Cancel
+                </button>
+                <button type="submit"
+                        style="padding:6px 16px;border-radius:6px;border:none;
+                               background:var(--color-text-primary);
+                               color:var(--color-background-primary);cursor:pointer">
+                    Save
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    (function () {
+        // ── Edit modal — defined first, before any early returns ───────────────
+        // window.openEdit = function(chunkId, docId, content) {
+        //     document.getElementById('modalChunkId').value = chunkId;
+        //     document.getElementById('modalDocId').value   = docId;
+        //     document.getElementById('modalContent').value = content;
+        //     document.getElementById('editModal').style.display = 'flex';
+        // };
+            window.closeEdit = function() {
+        document.getElementById('editModal').style.display = 'none';
+    };
+        var modal = document.getElementById('editModal');
+        if (modal) modal.addEventListener('click', function(e) {
+            if (e.target === this) closeEdit();
+        });
+            // ── Wire edit buttons ─────────────────────────────────────────────────
+        document.querySelectorAll('.chunk-edit-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            // Decode HTML entities so &#xA; → newline, &lt; →
+            var raw = btn.dataset.content;
+            var doc = new DOMParser().parseFromString(raw, 'text/html');
+            var decoded = doc.documentElement.textContent;
+
+            document.getElementById('modalChunkId').value = btn.dataset.chunkId;
+            document.getElementById('modalDocId').value   = btn.dataset.docId;
+            document.getElementById('modalContent').value = decoded;
+            document.getElementById('editModal').style.display = 'flex';
+        });
+    });
+
+        // ── Sync left↔right panel ─────────────────────────────────────────────
+        var hasImages = document.querySelectorAll('.cv-page-fig').length > 0;
+        if (hasImages) {
+            var docBody   = document.getElementById('docBody');
+            var pageLabel = document.getElementById('pageLabel');
+            var figMap    = {};
+            document.querySelectorAll('.cv-page-fig').forEach(function(f) {
+                figMap[f.dataset.chunkId] = f;
+            });
+
+            document.querySelectorAll('.chunk-card--clickable').forEach(function(card) {
+                card.addEventListener('click', function() { activateChunk(card.dataset.chunkId, false); });
+            });
+
+            function activateChunk(chunkId, fromScroll) {
+                document.querySelectorAll('.chunk-card--active').forEach(function(c) { c.classList.remove('chunk-card--active'); });
+                document.querySelectorAll('.cv-page-fig--active').forEach(function(f) { f.classList.remove('cv-page-fig--active'); });
+                var card = document.getElementById('chunk-' + chunkId);
+                var fig  = figMap[chunkId];
+                if (!card || !fig) return;
+                card.classList.add('chunk-card--active');
+                fig.classList.add('cv-page-fig--active');
+                if (!fromScroll) fig.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                var allFigs = Array.from(document.querySelectorAll('.cv-page-fig'));
+                if (pageLabel) pageLabel.textContent = (allFigs.indexOf(fig) + 1) + ' / ' + allFigs.length;
+            }
+
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(e) { if (e.isIntersecting) activateChunk(e.target.dataset.chunkId, true); });
+            }, { root: docBody, threshold: 0.5 });
+            document.querySelectorAll('.cv-page-fig').forEach(function(f) { observer.observe(f); });
+
+            var first = document.querySelector('.chunk-card--clickable');
+            if (first) activateChunk(first.dataset.chunkId, false);
+        }
+
+        // ── Drag-to-resize handle ─────────────────────────────────────────────
+        var resizer  = document.getElementById('cvResizer');
+        var docPanel = document.getElementById('docPanel');
+        if (!resizer || !docPanel) return;
+
+        var isResizing = false, startX = 0, startW = 0;
+
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            startX = e.clientX;
+            startW = docPanel.getBoundingClientRect().width;
+            resizer.classList.add('cv-resizer--active');
+            document.body.style.cursor     = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            var shell  = docPanel.closest('.cv-shell');
+            var shellW = shell.getBoundingClientRect().width;
+            var newW   = Math.min(Math.max(startW + (e.clientX - startX), 180), shellW - 240);
+            docPanel.style.width      = newW + 'px';
+            docPanel.style.flexShrink = '0';
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!isResizing) return;
+            isResizing = false;
+            resizer.classList.remove('cv-resizer--active');
+            document.body.style.cursor     = '';
+            document.body.style.userSelect = '';
+        });
+
+        resizer.addEventListener('touchstart', function(e) {
+            startX = e.touches[0].clientX;
+            startW = docPanel.getBoundingClientRect().width;
+        }, { passive: true });
+        resizer.addEventListener('touchmove', function(e) {
+            var shell  = docPanel.closest('.cv-shell');
+            var shellW = shell.getBoundingClientRect().width;
+            var newW   = Math.min(Math.max(startW + (e.touches[0].clientX - startX), 180), shellW - 240);
+            docPanel.style.width      = newW + 'px';
+            docPanel.style.flexShrink = '0';
+        }, { passive: true });
+    })();
+</script>

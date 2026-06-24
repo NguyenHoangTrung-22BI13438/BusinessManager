@@ -1,0 +1,77 @@
+[
+  {
+    "id": 1,
+    "question": "Nhân viên làm việc đủ 12 tháng được nghỉ phép năm bao nhiêu ngày?",
+    "ground_truth": "12 ngày phép năm hưởng nguyên lương, áp dụng cho người lao động làm việc đủ 12 tháng tại công ty, theo Điều 111, Điều 112 Bộ luật Lao động."
+  },
+  {
+    "id": 2,
+    "question": "Quy trình xin nghỉ phép từ 3 đến 5 ngày cần thông báo trước bao lâu?",
+    "ground_truth": "Xin phép trước 01 tuần, theo Thông báo số 20.11/2024/TB-XNP có hiệu lực từ ngày 01/12/2024."
+  },
+  {
+    "id": 3,
+    "question": "Nhân viên xin nghỉ phép từ 1,5 đến 2,5 ngày cần gửi yêu cầu trước bao lâu?",
+    "ground_truth": "Xin phép trước 02 ngày, theo Thông báo số 20.11/2024/TB-XNP có hiệu lực từ 01/12/2024."
+  },
+  {
+    "id": 4,
+    "question": "Nhân viên đăng ký làm thêm giờ (OT) theo quy trình nào?",
+    "ground_truth": "Team leader gửi yêu cầu OT lên cấp có thẩm quyền phê duyệt qua Microsoft Teams trước khi OT được thực hiện. Sau khi OT, nhân viên gửi yêu cầu Khai báo tăng ca để Leader và cấp có thẩm quyền xác nhận."
+  },
+  {
+    "id": 5,
+    "question": "Nhân viên đăng ký làm việc từ xa (WFH) như thế nào?",
+    "ground_truth": "Gửi yêu cầu trên Microsoft Teams (iSTS - Hành chính, nhân sự | General) trước ít nhất 1 ngày làm việc. Leader kiểm tra và phê duyệt hoặc từ chối."
+  },
+  {
+    "id": 6,
+    "question": "Thời gian nghỉ trưa của nhân viên làm việc theo giờ hành chính là khi nào?",
+    "ground_truth": "Từ 12h00 đến 13h00. Thời gian nghỉ trưa không tính vào thời giờ làm việc."
+  },
+  {
+    "id": 7,
+    "question": "Nhân viên được nghỉ bao nhiêu ngày khi bản thân kết hôn?",
+    "ground_truth": "Nghỉ 03 ngày hưởng nguyên lương. Nếu con kết hôn thì được nghỉ 01 ngày."
+  },
+  {
+    "id": 8,
+    "question": "Thời gian thử việc tối đa đối với công việc cần trình độ cao đẳng trở lên là bao lâu?",
+    "ground_truth": "Không quá 60 ngày. Đối với công việc cần trình độ trung cấp, công nhân kỹ thuật: không quá 30 ngày. Đối với lao động khác: không quá 06 ngày."
+  },
+  {
+    "id": 9,
+    "question": "Thu nhập trong thời gian thử việc được tính như thế nào?",
+    "ground_truth": "Tối thiểu bằng 85% thu nhập thỏa thuận chính thức. Trường hợp đặc biệt, lãnh đạo đơn vị có thể quyết định mức thu nhập cao hơn."
+  },
+  {
+    "id": 10,
+    "question": "Tiền lương hàng tháng của nhân viên được thanh toán vào thời gian nào?",
+    "ground_truth": "Thanh toán một lần trong 01 tháng, từ ngày 05 đến ngày 10 của tháng kế tiếp. Nếu trùng ngày nghỉ theo quy định, sẽ thanh toán vào ngày làm việc kế tiếp."
+  },
+  {
+    "id": 11,
+    "question": "Khi chấm dứt hợp đồng lao động xác định thời hạn, người lao động phải báo trước bao lâu?",
+    "ground_truth": "Ít nhất 30 ngày làm việc. Nếu là hợp đồng theo mùa vụ hoặc công việc có thời hạn dưới 12 tháng thì báo trước ít nhất 03 ngày làm việc."
+  },
+  {
+    "id": 12,
+    "question": "Sau khi chấm dứt hợp đồng lao động, hai bên phải hoàn tất thanh toán trong bao lâu?",
+    "ground_truth": "Trong thời hạn 07 ngày kể từ ngày chấm dứt hợp đồng lao động. Trường hợp đặc biệt có thể kéo dài nhưng không quá 30 ngày."
+  },
+  {
+    "id": 13,
+    "question": "Lương tháng 13 được tính theo công thức nào và thường chi trả vào khi nào?",
+    "ground_truth": "Lương tháng 13 = Lc / ∑Ctc * ∑Ctt, thường được chi trả vào tháng 1 năm tiếp theo và là thu nhập trước thuế."
+  },
+  {
+    "id": 14,
+    "question": "Mức trích nộp bảo hiểm thất nghiệp (BHTN) của người lao động là bao nhiêu?",
+    "ground_truth": "1% trên thu nhập làm căn cứ trích nộp bảo hiểm."
+  },
+  {
+    "id": 15,
+    "question": "Ngày Giỗ Tổ Hùng Vương người lao động được nghỉ mấy ngày?",
+    "ground_truth": "01 ngày (ngày 10/3 âm lịch). Nếu trùng vào ngày nghỉ hàng tuần thì được nghỉ bù vào ngày tiếp theo."
+  }
+]

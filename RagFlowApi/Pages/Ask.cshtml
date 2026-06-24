@@ -1,0 +1,818 @@
+@page
+@model RagFlowApi.Pages.AskModel
+@{
+    ViewData["Title"] = "Chat";
+    Layout = "_Layout";
+}
+@functions {
+    private static Microsoft.AspNetCore.Html.IHtmlContent RenderAnswer(
+        string content, IList<RagChunk>? chunks)
+    {
+        chunks ??= System.Array.Empty<RagChunk>();
+        var escaped = System.Net.WebUtility.HtmlEncode(content ?? "");
+        var html = System.Text.RegularExpressions.Regex.Replace(
+    escaped,
+    @"##(\d+)\$\$|\[ID:(\d+)\]",
+    m =>
+    {
+        var idxStr = m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value;
+        var idx = int.Parse(idxStr);
+        if (idx < 0 || idx >= chunks.Count)
+            return "";
+        var c = chunks[idx];
+        var doc = System.Net.WebUtility.HtmlEncode(c.DocumentName ?? "");
+        var snip = c.Content ?? "";
+        if (snip.Length > 400) snip = snip[..400] + "…";
+        var snipHtml = snip.Contains("<table", StringComparison.OrdinalIgnoreCase)
+            ? $"<div class=\"chunk-table-wrap\" style=\"max-height:180px;overflow:auto;font-size:11px\">{snip}</div>"
+            : System.Net.WebUtility.HtmlEncode(snip);
+        return
+    $"<span class=\"ref-badge\" tabindex=\"0\" data-image-id=\"{c.ImageId ?? ""}\">{idx + 1}" +
+    $"<span class=\"ref-tooltip\">" +
+    $"<span class=\"ref-tooltip-doc\">📄 {doc}</span>" +
+    $"<span class=\"ref-tooltip-label\">Retrieved chunk</span>" +
+    $"<span class=\"ref-tooltip-content\">{snipHtml}</span>" +
+    $"</span></span>";
+    });
+        return new Microsoft.AspNetCore.Html.HtmlString(html);
+    }
+}
+
+<div class="chat-shell">
+
+    @*SIDEBAR*@
+    <aside class="sidebar">
+
+        <div class="sidebar-header">
+            <span class="sidebar-title">Chats</span>
+        </div>
+
+        @*New chat form*@
+        <div class="new-chat-wrap">
+            <form method="post" asp-page-handler="Create" class="new-chat-form">
+                <input type="text"
+                       name="sessionName"
+                       class="new-chat-input"
+                       placeholder="New chat name…" />
+                <button type="submit" class="btn-new-chat" title="Create">＋</button>
+            </form>
+        </div>
+
+        @*Session list*@
+        <nav class="session-list">
+            @if (!Model.Sessions.Any())
+            {
+                <p class="session-empty">No chats yet.</p>
+            }
+            else
+            {
+                @foreach (var s in Model.Sessions)
+                {
+                    var isActive = s.Id == Model.SessionId;
+                    <div class="session-item @(isActive ? "session-item--active" : "")"
+                         data-session-id="@s.Id">
+
+                        @* Name link (hidden while renaming) *@
+                        <a href="/Ask?sessionId=@s.Id"
+                           class="session-name"
+                           title="@s.Name">@s.Name</a>
+
+                        @* Inline rename input (shown while renaming) *@
+                        <input type="text"
+                               class="session-rename-input"
+                               value="@s.Name"
+                               maxlength="80"
+                               data-session-id="@s.Id"
+                               style="display:none"
+                               aria-label="Rename chat" />
+
+                        @* Kebab ⋯ trigger *@
+                        <button class="btn-kebab"
+                                data-session-id="@s.Id"
+                                title="Options"
+                                aria-haspopup="true">⋯</button>
+
+                        @* Floating dropdown — positioned by JS *@
+                        <div class="session-dropdown" id="sdrop-@s.Id" role="menu">
+                            <button class="session-dropdown-item"
+                                    data-action="rename"
+                                    data-session-id="@s.Id"
+                                    role="menuitem">
+                                <span class="session-dropdown-item-icon">✏️</span>
+                                Rename
+                            </button>
+                            <div class="session-dropdown-divider"></div>
+                            <form method="post" asp-page-handler="Delete" style="margin:0">
+                                <input type="hidden" name="sessionId" value="@s.Id" />
+                                <button type="submit"
+                                        class="session-dropdown-item session-dropdown-item--danger"
+                                        role="menuitem"
+                                        onclick="return confirm('Delete this chat?')">
+                                    <span class="session-dropdown-item-icon">🗑️</span>
+                                    Delete
+                                </button>
+                            </form>
+                        </div>
+
+                    </div>
+                }
+            }
+        </nav>
+
+    </aside>
+
+    @*MAIN CHAT AREA*@
+    <section class="chat-main" id="chatMain">
+
+        @if (Model.SessionId == null)
+        {
+            @* Empty state *@
+            <div class="chat-empty">
+                <span class="chat-empty-icon">💬</span>
+                <p class="chat-empty-title">No chat selected</p>
+                <p class="chat-empty-sub">
+                    Create a new chat from the sidebar to start asking questions.<br />
+                    @if (User.IsInRole("admin")) { <text>Inside a chat you can attach 📎 documents to grow your knowledge base.</text> }
+                </p>
+            </div>
+        }
+        else
+        {
+            @*Chat header *@
+            <div class="chat-header">
+                <span class="chat-header-name">@Model.SessionName</span>
+            </div>
+
+            @*Message history*@
+            <div class="message-list" id="messageList">
+                @if (!Model.Messages.Any())
+                {
+                    <div class="chat-empty">
+                        <span class="chat-empty-icon">🤔</span>
+                        <p class="chat-empty-title">Ask your first question</p>
+                        <p class="chat-empty-sub">
+                            @(User.IsInRole("admin") ? "Type a message below — or click the 📎 to attach documents." : "Type a message below to get started.")
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var msg in Model.Messages)
+                    {
+                        if (msg.Role == "user")
+                        {
+                            <div class="bubble bubble--user">
+                                <div class="bubble-content">@msg.Content</div>
+                            </div>
+                        }
+                        else
+                        {
+                            var currentRating = Model.Ratings.TryGetValue(msg.Id, out var r) ? (bool?)r : null;
+                            <div class="bubble bubble--assistant">
+                                <div class="bubble-avatar">AI</div>
+                                <div class="bubble-body">
+                                    <div class="bubble-content">@RenderAnswer(msg.Content, msg.Chunks)</div>
+                                    @if (!string.IsNullOrEmpty(msg.Id))
+                                    {
+                                        <div class="rating-row" data-message-id="@msg.Id">
+                                            <button class="btn-rate btn-rate--up @(currentRating == true ? "btn-rate--active" : "")"
+                                                    data-value="true" title="Helpful" aria-label="Mark as helpful">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/>
+                                                    <path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                                                </svg>
+                                            </button>
+                                            <button class="btn-rate btn-rate--down @(currentRating == false ? "btn-rate--active" : "")"
+                                                    data-value="false" title="Not helpful" aria-label="Mark as not helpful">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/>
+                                                    <path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @* Regenerate button — only when the last turn is from the AI *@
+                    var lastMsg = Model.Messages.LastOrDefault();
+
+                    @if (lastMsg is not null && lastMsg.Role != "user")
+                    {
+                        <div class="regen-row">
+                            <form method="post" asp-page-handler="Regenerate" id="regenForm">
+                                <input type="hidden" name="sessionId" value="@Model.SessionId" />
+                                <button type="submit" class="btn-regen" id="regenBtn"
+                                        title="Regenerate response">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2.2"
+                                         stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="1 4 1 10 7 10" />
+                                        <path d="M3.51 15a9 9 0 1 0 .49-3.56" />
+                                    </svg>
+                                    Regenerate response
+                                </button>
+                            </form>
+                        </div>
+                    }
+                }
+            </div>
+
+            @*Alerts*@
+            <div id="alertContainer" data-pending-jobs='@Html.Raw(Model.PendingJobsJson)'>
+            @if (!string.IsNullOrWhiteSpace(Model.SuccessMessage))
+            {
+                <div class="alert alert--success">✓ @Model.SuccessMessage</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+            {
+                <div class="alert alert--error">⚠ @Model.ErrorMessage</div>
+            }
+            </div>
+
+            @*Ask form *@
+            <div class="ask-bar">
+                <form method="post"
+                      asp-page-handler="Ask"
+                      class="ask-bar-form"
+                      enctype="multipart/form-data"
+                      id="askForm">
+                    <input type="hidden" name="sessionId" value="@Model.SessionId" />
+
+                    @if (User.IsInRole("admin"))
+                    {
+                        @* File chips appear here when files are selected *@
+                        <div class="attached-files" id="attachedFiles"></div>
+                    }
+
+                    <div class="ask-bar-row">
+                        @if (User.IsInRole("admin"))
+                        {
+                            <label for="fileAttach" class="ask-bar-attach" title="Attach files">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="2"
+                                     stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                </svg>
+                            </label>
+                            <input type="file"
+                                   id="fileAttach"
+                                   name="files"
+                                   multiple
+                                   class="visually-hidden-input"
+                                   accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.md,.png,.jpg,.jpeg" />
+                        }
+
+                        <textarea name="question"
+                              class="ask-bar-input"
+                              rows="1"
+                              placeholder="@(User.IsInRole("admin") ? "Ask a question or attach documents…" : "Ask a question…")"></textarea>
+
+                        <button type="submit" class="ask-bar-btn" id="askSendBtn" title="Send">
+                            <svg class="ask-bar-btn-icon"
+                                 width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2.2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13" />
+                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                            <span class="ask-bar-btn-spinner" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            @* Drag-to-attach overlay — admin only *@
+            @if (User.IsInRole("admin"))
+            {
+                <div class="drop-overlay" id="dropOverlay">
+                    <div class="drop-overlay-inner">
+                        <span class="drop-overlay-icon">📥</span>
+                        <p class="drop-overlay-text">Drop files to attach</p>
+                    </div>
+                </div>
+            }
+        }
+
+    </section>
+</div>
+
+<script>
+    // ─── Ingestion job polling ──────────────────────────────────────────────
+    const JOB_POLL_MS   = 3000;
+    const JOB_MAX_POLLS = 200;
+
+    function startJobPolling(jobId, fileName) {
+        const alertContainer = document.getElementById('alertContainer');
+        if (!alertContainer) return;
+
+        const bannerId = `job-banner-${jobId}`;
+        if (document.getElementById(bannerId)) return;
+
+        const banner = document.createElement('div');
+        banner.id        = bannerId;
+        banner.className = 'alert alert--info';
+        banner.textContent = `⚙️ Processing "${fileName}"…`;
+        alertContainer.appendChild(banner);
+
+        let polls = 0;
+        const timer = setInterval(async () => {
+            polls++;
+            if (polls > JOB_MAX_POLLS) {
+                clearInterval(timer);
+                banner.className   = 'alert alert--error';
+                banner.textContent = `⚠ "${fileName}" timed out — check server logs.`;
+                return;
+            }
+            try {
+                const res = await fetch(`/ingest-status/${jobId}`);
+                if (!res.ok) return;
+                const d = await res.json();
+
+                if (d.state === 'done') {
+                    clearInterval(timer);
+                    banner.className   = 'alert alert--success';
+                    banner.textContent = `✓ "${fileName}" indexed successfully.`;
+                    setTimeout(() => banner.remove(), 5000);
+                } else if (d.state === 'failed') {
+                    clearInterval(timer);
+                    banner.className   = 'alert alert--error';
+                    banner.textContent = `⚠ "${fileName}" failed: ${d.message || 'unknown error'}`;
+                }
+            } catch { }
+        }, JOB_POLL_MS);
+    }
+
+    function startPendingJobsFromElement(el) {
+        if (!el) return;
+        try {
+            const jobs = JSON.parse(el.dataset.pendingJobs || '[]');
+            jobs.forEach(j => startJobPolling(j.jobId, j.fileName));
+        } catch {}
+    }
+
+    // ─── Auto-scroll message list to bottom on load ─────────────────────────
+    const messageList = document.getElementById('messageList');
+    if (messageList) messageList.scrollTop = messageList.scrollHeight;
+
+    startPendingJobsFromElement(document.getElementById('alertContainer'));
+
+    // ─── File attachment management ─────────────────────────────────────────
+    const fileInput     = document.getElementById('fileAttach');
+    const attachedFiles = document.getElementById('attachedFiles');
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function renderChips() {
+        if (!attachedFiles || !fileInput) return;
+        attachedFiles.innerHTML = '';
+        if (fileInput.files.length === 0) return;
+
+        Array.from(fileInput.files).forEach((file, idx) => {
+            const chip = document.createElement('div');
+            chip.className = 'file-chip';
+            chip.innerHTML = `
+                <span class="file-chip-icon">📎</span>
+                <span class="file-chip-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+                <span class="file-chip-size">${formatBytes(file.size)}</span>
+                <button type="button" class="file-chip-remove" data-idx="${idx}" title="Remove">×</button>
+            `;
+            attachedFiles.appendChild(chip);
+        });
+
+        attachedFiles.querySelectorAll('.file-chip-remove').forEach(btn => {
+            btn.addEventListener('click', e => {
+                const idx = parseInt(e.currentTarget.dataset.idx, 10);
+                const dt = new DataTransfer();
+                Array.from(fileInput.files).forEach((f, i) => {
+                    if (i !== idx) dt.items.add(f);
+                });
+                fileInput.files = dt.files;
+                renderChips();
+            });
+        });
+    }
+
+    fileInput?.addEventListener('change', renderChips);
+
+    // ─── Textarea: Enter to send (Shift+Enter = newline) + auto-grow ───────
+    document.querySelectorAll('.ask-bar-input').forEach(el => {
+        el.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                el.closest('form').requestSubmit();
+            }
+        });
+        el.addEventListener('input', () => {
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+        });
+    });
+
+    // ─── patchFromResponse — swaps message area without full reload ────────
+    function patchFromResponse(html) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+
+        const newList = doc.getElementById('messageList');
+        if (newList && messageList) {
+            messageList.innerHTML = newList.innerHTML;
+            messageList.scrollTop = messageList.scrollHeight;
+        }
+
+        const alertContainer = document.getElementById('alertContainer');
+        if (alertContainer) {
+            const newAlerts = doc.getElementById('alertContainer');
+            alertContainer.innerHTML = newAlerts ? newAlerts.innerHTML : '';
+            document.querySelectorAll('[id^="job-banner-"]').forEach(b => {
+                if (!alertContainer.contains(b)) alertContainer.appendChild(b);
+            });
+            startPendingJobsFromElement(newAlerts);
+        }
+
+        const regenRow = document.querySelector('.regen-row');
+        const newRegenRow = doc.querySelector('.regen-row');
+        if (regenRow)     regenRow.replaceWith(newRegenRow ?? document.createDocumentFragment());
+        else if (newRegenRow) messageList?.after(newRegenRow);
+
+        wireRegenForm();
+        wireRefBadges(messageList);
+        wireRatingButtons(messageList);
+    }
+
+    function showFetchError(msg) {
+        const alertContainer = document.getElementById('alertContainer');
+        if (alertContainer)
+            alertContainer.innerHTML =
+                `<div class="alert alert--error">⚠ ${msg}</div>`;
+    }
+
+    // ─── Ask form — fetch instead of full-page POST ─────────────────────────
+    const askForm    = document.getElementById('askForm');
+    const askSendBtn = document.getElementById('askSendBtn');
+    askForm?.addEventListener('submit', async e => {
+        e.preventDefault();
+        askSendBtn?.classList.add('is-loading');
+        askSendBtn?.setAttribute('disabled', 'true');
+
+        try {
+            const fd  = new FormData(askForm);
+            const res = await fetch(askForm.action || window.location.href, {
+                method: 'POST', body: fd
+            });
+            if (!res.ok) throw new Error(`Server returned ${res.status}`);
+            patchFromResponse(await res.text());
+
+            const textarea = askForm.querySelector('.ask-bar-input');
+            if (textarea) { textarea.value = ''; textarea.style.height = 'auto'; }
+            if (fileInput) {
+                fileInput.value = '';
+                try { fileInput.files = new DataTransfer().files; } catch {}
+            }
+            if (attachedFiles) attachedFiles.innerHTML = '';
+        } catch (err) {
+            showFetchError(`Could not send message: ${err.message}`);
+        } finally {
+            askSendBtn?.classList.remove('is-loading');
+            askSendBtn?.removeAttribute('disabled');
+        }
+    });
+
+    // ─── Drag-and-drop onto the chat area ──────────────────────────────────
+    const chatMain    = document.getElementById('chatMain');
+    const dropOverlay = document.getElementById('dropOverlay');
+    let dragDepth = 0;
+
+    function isFileDrag(e) {
+        return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+    }
+
+    if (chatMain && fileInput) {
+        chatMain.addEventListener('dragenter', e => {
+            if (!isFileDrag(e)) return;
+            dragDepth++;
+            dropOverlay?.classList.add('drop-overlay--active');
+        });
+        chatMain.addEventListener('dragover', e => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+        chatMain.addEventListener('dragleave', () => {
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) dropOverlay?.classList.remove('drop-overlay--active');
+        });
+        chatMain.addEventListener('drop', e => {
+            if (!e.dataTransfer || e.dataTransfer.files.length === 0) return;
+            e.preventDefault();
+            dragDepth = 0;
+            dropOverlay?.classList.remove('drop-overlay--active');
+            const dt = new DataTransfer();
+            Array.from(fileInput.files).forEach(f => dt.items.add(f));
+            Array.from(e.dataTransfer.files).forEach(f => dt.items.add(f));
+            fileInput.files = dt.files;
+            renderChips();
+        });
+    }
+
+    // ─── Regenerate — fetch instead of full-page POST ──────────────────────
+    function wireRegenForm() {
+        const regenForm = document.querySelector('#regenForm');
+        const regenBtn  = regenForm?.querySelector('#regenBtn');
+        if (!regenForm) return;
+
+        regenForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            regenBtn?.classList.add('is-loading');
+            if (regenBtn) regenBtn.disabled = true;
+
+            try {
+                const fd  = new FormData(regenForm);
+                const res = await fetch(regenForm.action || window.location.href, {
+                    method: 'POST', body: fd
+                });
+                if (!res.ok) throw new Error(`Server returned ${res.status}`);
+                patchFromResponse(await res.text());
+            } catch (err) {
+                showFetchError(`Regeneration failed: ${err.message}`);
+                regenBtn?.classList.remove('is-loading');
+                if (regenBtn) regenBtn.disabled = false;
+            }
+        });
+    }
+    wireRegenForm();
+
+    // ─── Response rating buttons ────────────────────────────────────────────
+    function wireRatingButtons(root) {
+        (root ?? document).querySelectorAll('.rating-row').forEach(row => {
+            if (row.dataset.ratingWired) return;
+            row.dataset.ratingWired = '1';
+
+            row.querySelectorAll('.btn-rate').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const messageId = row.dataset.messageId;
+                    const positive  = btn.dataset.value === 'true';
+                    const sessionInput = document.querySelector('#askForm input[name="sessionId"]');
+                    const sessionId = sessionInput?.value ?? '';
+                    if (!sessionId || !messageId) return;
+
+                    const fd = new FormData();
+                    fd.append('sessionId',                  sessionId);
+                    fd.append('messageId',                  messageId);
+                    fd.append('positive',                   positive.toString());
+                    fd.append('__RequestVerificationToken', getAntiforgeryToken());
+
+                    try {
+                        const res = await fetch('?handler=Rate', {
+                            method: 'POST', body: fd, credentials: 'same-origin'
+                        });
+                        if (!res.ok) return;
+                        // Optimistic UI: toggle active state
+                        const wasActive = btn.classList.contains('btn-rate--active');
+                        row.querySelectorAll('.btn-rate').forEach(b => b.classList.remove('btn-rate--active'));
+                        if (!wasActive) btn.classList.add('btn-rate--active');
+                    } catch { /* silent — rating is best-effort */ }
+                });
+            });
+        });
+    }
+
+    // ─── Ref-badge image lazy-load ──────────────────────────────────────────
+        function wireRefBadges(root) {
+        (root ?? document).querySelectorAll('.ref-badge[data-image-id]').forEach(badge => {
+            if (badge.dataset.imgWired) return;
+            badge.dataset.imgWired = '1';
+
+            // ── Hover: lazy-load image into tooltip, show on mouseenter ──
+            badge.addEventListener('mouseenter', async () => {
+                if (badge.dataset.pinned === '1') return; // pinned takes priority
+                const imageId = badge.dataset.imageId;
+                const tooltip = badge.querySelector('.ref-tooltip');
+                if (!tooltip) return;
+                if (imageId && !tooltip.querySelector('img')) {
+                    const img = document.createElement('img');
+                    img.src = `/document-image/${encodeURIComponent(imageId)}`;
+                    img.style.cssText = 'max-width:100%;border-radius:4px;margin-top:6px;display:block;';
+                    img.onerror = () => img.remove();
+                    tooltip.appendChild(img);
+                }
+                tooltip.classList.add('ref-tooltip--visible');
+            });
+
+            badge.addEventListener('mouseleave', () => {
+                if (badge.dataset.pinned === '1') return;
+                badge.querySelector('.ref-tooltip')?.classList.remove('ref-tooltip--visible');
+            });
+
+            // ── Click: pin/unpin tooltip, stays until click elsewhere ──
+            badge.addEventListener('click', e => {
+                e.stopPropagation();
+                const tooltip = badge.querySelector('.ref-tooltip');
+                if (!tooltip) return;
+                const isPinned = badge.dataset.pinned === '1';
+                // Unpin all others first
+                document.querySelectorAll('.ref-badge[data-pinned="1"]').forEach(b => {
+                    if (b !== badge) {
+                        b.dataset.pinned = '0';
+                        b.querySelector('.ref-tooltip')?.classList.remove('ref-tooltip--visible', 'ref-tooltip--pinned');
+                    }
+                });
+                if (isPinned) {
+                    badge.dataset.pinned = '0';
+                    tooltip.classList.remove('ref-tooltip--visible', 'ref-tooltip--pinned');
+                } else {
+                    badge.dataset.pinned = '1';
+                    tooltip.classList.add('ref-tooltip--visible', 'ref-tooltip--pinned');
+                }
+            });
+        });
+    }
+
+    // Click anywhere else → unpin all tooltips
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.ref-badge[data-pinned="1"]').forEach(b => {
+            b.dataset.pinned = '0';
+            b.querySelector('.ref-tooltip')?.classList.remove('ref-tooltip--visible', 'ref-tooltip--pinned');
+        });
+    });
+    wireRefBadges(messageList);
+    wireRatingButtons(messageList);
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ─── SESSION KEBAB MENUS (rename / delete) ─────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // Grab the antiforgery token from any form already on the page
+    function getAntiforgeryToken() {
+        return document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    }
+
+    // Close every open dropdown
+    function closeAllSessionDropdowns() {
+        document.querySelectorAll('.session-dropdown.is-open').forEach(d => {
+            d.classList.remove('is-open');
+        });
+        document.querySelectorAll('.btn-kebab.is-active').forEach(b => {
+            b.classList.remove('is-active');
+        });
+    }
+
+    // Position a dropdown using fixed coords so it never gets clipped by the sidebar
+    function positionDropdown(dropdown, triggerBtn) {
+        const r = triggerBtn.getBoundingClientRect();
+        // Prefer right-aligning to the button's right edge
+        const menuW = 160; // approximate menu width
+        let left = r.right - menuW;
+        if (left < 8) left = r.left;  // don't go off screen left
+
+        dropdown.style.top  = (r.bottom + 4) + 'px';
+        dropdown.style.left = left + 'px';
+    }
+
+    // Wire up all kebab buttons
+    document.querySelectorAll('.btn-kebab').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            e.preventDefault();
+            const sid      = btn.dataset.sessionId;
+            const dropdown = document.getElementById(`sdrop-${sid}`);
+            if (!dropdown) return;
+
+            const wasOpen = dropdown.classList.contains('is-open');
+            closeAllSessionDropdowns();
+
+            if (!wasOpen) {
+                positionDropdown(dropdown, btn);
+                dropdown.classList.add('is-open');
+                btn.classList.add('is-active');
+            }
+        });
+    });
+
+    // Click anywhere else → close dropdowns
+    document.addEventListener('click', closeAllSessionDropdowns);
+
+    // Escape key → close dropdowns (or cancel active rename)
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') closeAllSessionDropdowns();
+    });
+
+    // ─── Rename action ──────────────────────────────────────────────────────
+    document.querySelectorAll('[data-action="rename"]').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.stopPropagation();
+            closeAllSessionDropdowns();
+            startRename(btn.dataset.sessionId);
+        });
+    });
+
+    function startRename(sessionId) {
+        const item  = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
+        if (!item) return;
+        const link  = item.querySelector('.session-name');
+        const input = item.querySelector('.session-rename-input');
+        if (!link || !input) return;
+
+        // Show the input, hide the link
+        link.style.display  = 'none';
+        input.style.display = '';
+        input.focus();
+        input.select();
+
+        let committed = false;
+
+        function commit() {
+            if (committed) return;
+            committed = true;
+            cleanup();
+            const newName = input.value.trim();
+            const oldName = link.textContent.trim();
+            if (!newName || newName === oldName) {
+                cancel(false);
+                return;
+            }
+            submitRename(sessionId, newName, link, input);
+        }
+
+        function cancel(restoreNow = true) {
+            if (restoreNow) {
+                input.style.display = 'none';
+                link.style.display  = '';
+            }
+        }
+
+        function cleanup() {
+            input.removeEventListener('keydown', onKeyDown);
+            input.removeEventListener('blur',    onBlur);
+        }
+
+        function onKeyDown(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                commit();
+            } else if (e.key === 'Escape') {
+                committed = true;
+                cleanup();
+                cancel();
+            }
+        }
+
+        // Blur fires after a click on the dropdown item, so use a short delay
+        // to let Enter/Escape fire first
+        function onBlur() {
+            setTimeout(() => { if (!committed) commit(); }, 120);
+        }
+
+        input.addEventListener('keydown', onKeyDown);
+        input.addEventListener('blur',    onBlur);
+    }
+
+    async function submitRename(sessionId, newName, linkEl, inputEl) {
+        const fd = new FormData();
+        fd.append('sessionId',                     sessionId);
+        fd.append('newName',                       newName);
+        fd.append('__RequestVerificationToken',    getAntiforgeryToken());
+
+        try {
+            const res = await fetch('?handler=Rename', {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin'
+            });
+            if (!res.ok) throw new Error(`Server ${res.status}`);
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || 'Rename failed');
+
+            // Update the visible link text and its title attribute
+            linkEl.textContent = data.name;
+            linkEl.title       = data.name;
+
+            // If this is the currently open chat, update the header too
+            const header = document.querySelector('.chat-header-name');
+            if (header && header.closest) {
+                const sessionInput = document.querySelector('#askForm input[name="sessionId"]');
+                if (sessionInput?.value === sessionId) {
+                    header.textContent = data.name;
+                }
+            }
+        } catch (err) {
+            console.error('Rename failed:', err.message);
+            // Revert input to original name on error
+            inputEl.value = linkEl.textContent.trim();
+        } finally {
+            inputEl.style.display = 'none';
+            linkEl.style.display  = '';
+        }
+    }
+</script>

@@ -1,0 +1,835 @@
+/* ══════════════════════════════════════════════════════════════════════════ */
+/* ── CHAT SHELL (two-column layout) ─────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+.chat-shell {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar-header {
+    padding: 16px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.sidebar-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-subtle);
+}
+
+/* new chat input row */
+.new-chat-wrap {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.new-chat-form {
+    display: flex;
+    gap: 6px;
+}
+
+.new-chat-input {
+    flex: 1;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 7px 10px;
+    color: var(--text-primary);
+    font-family: var(--font);
+    font-size: 13px;
+    outline: none;
+    transition: border-color .2s;
+}
+
+    .new-chat-input:focus {
+        border-color: var(--border-focus);
+    }
+
+    .new-chat-input::placeholder {
+        color: var(--text-subtle);
+    }
+
+.btn-new-chat {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .15s;
+}
+
+    .btn-new-chat:hover {
+        background: var(--accent-hover);
+    }
+
+/* session list */
+.session-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.session-empty {
+    font-size: 13px;
+    color: var(--text-subtle);
+    padding: 12px 8px;
+}
+
+.session-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 2px;
+    transition: background .15s;
+}
+
+    .session-item:hover {
+        background: var(--bg-input);
+    }
+
+.session-item--active {
+    background: rgba(79,110,247,.15);
+}
+
+.session-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color .15s;
+}
+
+.session-item--active .session-name {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.session-item:hover .session-name {
+    color: var(--text-primary);
+}
+
+.delete-form {
+    flex-shrink: 0;
+}
+
+.btn-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity .15s;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.session-item:hover .btn-delete {
+    opacity: 1;
+}
+
+.btn-delete:hover {
+    background: rgba(247,111,111,.15);
+}
+
+/* ── Chat main area ──────────────────────────────────────────────────────── */
+.chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative; /* anchor for the drop-overlay */
+}
+
+.chat-header {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+    flex-shrink: 0;
+}
+
+.chat-header-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* empty state */
+.chat-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px;
+    height: 100%;
+}
+
+.chat-empty-icon {
+    font-size: 40px;
+}
+
+.chat-empty-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.chat-empty-sub {
+    font-size: 13px;
+    color: var(--text-subtle);
+    text-align: center;
+    line-height: 1.7;
+}
+
+/* message list */
+.message-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 24px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* bubbles */
+.bubble {
+    display: flex;
+    gap: 12px;
+    max-width: 80%;
+}
+
+.bubble--user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.bubble--assistant {
+    align-self: flex-start;
+}
+
+.bubble-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.bubble-content {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.bubble--user .bubble-content {
+    background: var(--bg-bubble-user);
+    color: var(--text-primary);
+    border-bottom-right-radius: 4px;
+}
+
+.bubble--assistant .bubble-content {
+    background: var(--bg-bubble-ai);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-bottom-left-radius: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/* ── ASK BAR (with file-attach support) ─────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════ */
+.ask-bar {
+    padding: 12px 24px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-card);
+    flex-shrink: 0;
+}
+
+/* Form is now a column: chips on top, input row below */
+.ask-bar-form {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: border-color .2s;
+    overflow: hidden;
+}
+
+    .ask-bar-form:focus-within {
+        border-color: var(--border-focus);
+    }
+
+/* Row containing attach + textarea + send */
+.ask-bar-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 6px;
+}
+
+/* Attach (paperclip) button — uses a <label> so clicking opens file picker */
+.ask-bar-attach {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s, color .15s;
+}
+
+    .ask-bar-attach:hover {
+        background: rgba(255,255,255,.05);
+        color: var(--text-primary);
+    }
+
+/* Visually-hide the file input but keep it focusable/clickable via label */
+.visually-hidden-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Textarea inside the row */
+.ask-bar-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    resize: none;
+    max-height: 140px;
+    overflow-y: auto;
+    padding: 8px 6px;
+    min-height: 20px;
+}
+
+    .ask-bar-input::placeholder {
+        color: var(--text-subtle);
+    }
+
+/* Send button (with spinner for loading state) */
+.ask-bar-btn {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .15s, transform .1s, opacity .15s;
+    position: relative;
+}
+
+    .ask-bar-btn:hover {
+        background: var(--accent-hover);
+    }
+
+    .ask-bar-btn:active {
+        transform: scale(.95);
+    }
+
+    .ask-bar-btn:disabled {
+        cursor: not-allowed;
+        opacity: .85;
+    }
+
+.ask-bar-btn-spinner {
+    display: none;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+}
+
+.ask-bar-btn.is-loading .ask-bar-btn-icon {
+    display: none;
+}
+
+.ask-bar-btn.is-loading .ask-bar-btn-spinner {
+    display: block;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ── Attached file chips ─────────────────────────────────────────────────── */
+.attached-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 12px 4px;
+    border-bottom: 1px solid var(--border);
+}
+
+    .attached-files:empty {
+        display: none;
+    }
+
+.file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px 4px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    font-size: 12px;
+    color: var(--text-primary);
+    max-width: 260px;
+}
+
+.file-chip-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.file-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 0 1 auto;
+    max-width: 150px;
+}
+
+.file-chip-size {
+    color: var(--text-subtle);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.file-chip-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+    padding: 0;
+    transition: background .15s, color .15s;
+}
+
+    .file-chip-remove:hover {
+        background: rgba(247,111,111,.18);
+        color: var(--error);
+    }
+
+/* ── Drag-and-drop overlay (covers chat-main while dragging files) ──────── */
+.drop-overlay {
+    position: absolute;
+    inset: 12px;
+    border: 2px dashed var(--accent);
+    border-radius: var(--radius);
+    background: rgba(79,110,247,.08);
+    backdrop-filter: blur(2px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    pointer-events: none;
+}
+
+.drop-overlay--active {
+    display: flex;
+}
+
+.drop-overlay-inner {
+    text-align: center;
+    color: var(--accent);
+}
+
+.drop-overlay-icon {
+    font-size: 40px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.drop-overlay-text {
+    font-size: 16px;
+    font-weight: 500;
+}
+/* ── Inline reference badges & tooltips ────────────────────────────────── */
+.ref-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    margin: 0 2px;
+    background: rgba(79,110,247,.18);
+    color: var(--accent);
+    border: 1px solid rgba(79,110,247,.35);
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    vertical-align: baseline;
+    position: relative;
+    transition: background .15s, color .15s;
+    user-select: none;
+}
+
+    .ref-badge:hover,
+    .ref-badge:focus {
+        background: var(--accent);
+        color: #fff;
+        outline: none;
+    }
+
+.ref-tooltip {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 320px;
+    max-width: min(85vw, 400px);
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.5;
+    white-space: normal;
+    text-align: left;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity .15s, transform .15s;
+    z-index: 100;
+    pointer-events: none;
+}
+
+/*.ref-badge:hover .ref-tooltip,
+.ref-badge:focus .ref-tooltip {
+    visibility: visible;
+    opacity: 1;
+}*/
+
+.ref-tooltip-doc {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 6px;
+    word-break: break-all;
+}
+
+.ref-tooltip-content {
+    display: block;
+    color: var(--text-muted);
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+.ref-badge--orphan {
+    opacity: 0.4;
+    cursor: default;
+}
+
+    .ref-badge--orphan .ref-tooltip {
+        display: none;
+    }
+.ref-tooltip--visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+}
+
+.ref-tooltip--pinned {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+/* ── Bubble body — wraps content + rating row vertically ────────────────── */
+.bubble-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+/* ── Response rating buttons ────────────────────────────────────────────── */
+.rating-row {
+    display: flex;
+    gap: 4px;
+    padding: 0 4px;
+}
+
+.btn-rate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-subtle);
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    padding: 0;
+}
+
+    .btn-rate:hover {
+        background: var(--bg-input);
+        color: var(--text-muted);
+        border-color: var(--border);
+    }
+
+    .btn-rate--up.btn-rate--active {
+        color: var(--success);
+        border-color: var(--success);
+        background: rgba(45, 212, 160, .1);
+    }
+
+    .btn-rate--down.btn-rate--active {
+        color: var(--error);
+        border-color: var(--error);
+        background: rgba(247, 111, 111, .1);
+    }
+
+/* ── Regenerate response button ─────────────────────────────────────────── */
+/* AFTER */
+.regen-row {
+    display: flex;
+    padding: 2px 0 12px;
+    padding-left: 44px; /* aligns with bubble text (32px avatar + 12px gap) */
+}
+
+.btn-regen {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text-muted);
+    font-family: var(--font);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    user-select: none;
+}
+
+    .btn-regen:hover {
+        background: var(--bg-input);
+        color: var(--text-primary);
+        border-color: var(--border-focus);
+    }
+
+    .btn-regen svg {
+        transition: transform .5s;
+    }
+
+    .btn-regen.is-loading {
+        opacity: .65;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+        .btn-regen.is-loading svg {
+            animation: spin .8s linear infinite; /* reuses the existing @keyframes spin */
+        }
+/* ══════════════════════════════════════════════════════════════════════════ */
+/* ── SESSION ITEM KEBAB MENU ─────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+/* Three-dot trigger — hidden until row is hovered or menu is open */
+.btn-kebab {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    display: none;              /* hidden by default — shown via JS/hover below */
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 5px;
+    color: var(--text-subtle);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: background .12s, color .12s;
+    letter-spacing: -.5px;
+}
+
+/* Show on row hover OR when menu is open */
+.session-item:hover .btn-kebab,
+.btn-kebab.is-active {
+    display: flex;
+}
+
+.btn-kebab:hover,
+.btn-kebab.is-active {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+/* Floating dropdown — hidden until .is-open is added by JS */
+.session-dropdown {
+    display: none;              /* primary hide — overrides any opacity leakage */
+    position: fixed;
+    z-index: 500;
+    min-width: 150px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+    padding: 4px;
+    opacity: 0;
+    transform: translateY(-4px) scale(.97);
+    pointer-events: none;
+    transition: opacity .12s, transform .12s;
+}
+
+.session-dropdown.is-open {
+    display: block;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+/* Items inside the dropdown */
+.session-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 8px 10px;
+    background: none;
+    border: none;
+    border-radius: 5px;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    transition: background .1s, color .1s;
+}
+
+.session-dropdown-item:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.session-dropdown-item--danger:hover {
+    background: rgba(247, 111, 111, .12);
+    color: var(--error);
+}
+
+.session-dropdown-item-icon {
+    font-size: 13px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* Divider between Rename and Delete */
+.session-dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 3px 0;
+}
+
+/* Inline rename input — swaps in for the <a> link while editing */
+.session-rename-input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-input);
+    border: 1px solid var(--border-focus);
+    border-radius: 5px;
+    padding: 3px 7px;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--text-primary);
+    outline: none;
+    height: 24px;
+    line-height: 1;
+}
+.ref-tooltip--visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.ref-tooltip--pinned {
+    outline: 2px solid var(--accent, #2254C5);
+}

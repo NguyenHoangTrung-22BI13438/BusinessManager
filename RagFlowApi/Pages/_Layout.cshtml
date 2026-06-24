@@ -1,0 +1,248 @@
+@inject RagFlowApi.Services.PendingDocumentStore PendingStore
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — RAGFlow</title>
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/account.css" />
+    <link rel="stylesheet" href="/css/chat.css" />
+    <link rel="stylesheet" href="/css/documents.css" />
+    <link rel="stylesheet" href="/css/chunks.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="nav-logo">⬡</span>
+            <span class="nav-title">RAGFlow</span>
+        </div>
+        <div class="nav-links">
+
+            @if (Context.User.Identity?.IsAuthenticated == true)
+            {
+                <a href="/Ask"       class="nav-link">Chat</a>
+                <a href="/Documents" class="nav-link">Documents</a>
+                <a href="/FillForm"  class="nav-link">Fill Form</a>
+                @* Admin-only links *@
+                @if (Context.User.IsInRole("admin"))
+                {
+                    var pendingCount = await PendingStore.GetPendingCountAsync();
+                    <a href="/Pending" class="nav-link" style="position:relative">
+                        Review
+                        @if (pendingCount > 0)
+                        {
+                            <span style="
+                            position:absolute; top:-6px; right:-10px;
+                            background:var(--accent); color:#fff;
+                            border-radius:999px; font-size:10px;
+                            padding:1px 5px; font-weight:600">@pendingCount</span>
+                        }
+                    </a>
+                    <a href="/swagger" class="nav-link nav-link--subtle">API</a>
+                    <a href="/Evaluate" class="nav-link">Evaluate</a>
+                }
+
+                @* ── User dropdown ── *@
+                
+                    var displayName = Context.User.FindFirst("DisplayName")?.Value
+                                      ?? Context.User.Identity.Name
+                                      ?? "User";
+                    var initials = string.IsNullOrWhiteSpace(displayName)
+                        ? "U"
+                        : displayName.Substring(0, 1).ToUpper();
+                
+                <div class="nav-user-wrap" id="navUserWrap">
+                    <button class="nav-user-btn"
+                            id="navUserBtn"
+                            aria-haspopup="true"
+                            aria-expanded="false"
+                            aria-controls="navUserDropdown"
+                            title="Account options">
+                        <span class="nav-user-avatar">@initials</span>
+                        <span class="nav-user-name">@displayName</span>
+                        <span class="nav-user-chevron">▾</span>
+                    </button>
+
+                    <div class="nav-user-dropdown" id="navUserDropdown" role="menu">
+                        <button class="dropdown-item" id="openAccountModal" role="menuitem">
+                            <span class="dropdown-item-icon">👤</span>
+                            Profile
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <form method="post" action="/logout" style="margin:0">
+                            <button type="submit" class="dropdown-item dropdown-item--danger" role="menuitem">
+                                <span class="dropdown-item-icon">🚪</span>
+                                Sign out
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            }
+
+        </div>
+    </nav>
+
+    <div class="page-body">
+        @RenderBody()
+    </div>
+
+    @* ── Account modal backdrop (hidden until opened) ────────────────────── *@
+    <div class="modal-backdrop" id="accountBackdrop" aria-modal="true" role="dialog" aria-label="Account">
+        <div class="modal-card" id="accountModal">
+            <div class="modal-header">
+                <span class="modal-title">Account</span>
+                <button class="modal-close" id="closeAccountModal" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body" id="accountModalBody">
+                @* Content fetched from /Account and injected here *@
+                <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:14px">
+                    Loading…
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        // ── Dropdown toggle ───────────────────────────────────────────────
+        var btn       = document.getElementById('navUserBtn');
+        var dropdown  = document.getElementById('navUserDropdown');
+        var wrap      = document.getElementById('navUserWrap');
+
+        if (btn && dropdown) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var open = dropdown.classList.toggle('is-open');
+                btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+
+            // Close when clicking outside
+            document.addEventListener('click', function (e) {
+                if (wrap && !wrap.contains(e.target)) {
+                    dropdown.classList.remove('is-open');
+                    btn.setAttribute('aria-expanded', 'false');
+                }
+            });
+
+            // Close on Escape
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') {
+                    dropdown.classList.remove('is-open');
+                    btn.setAttribute('aria-expanded', 'false');
+                }
+            });
+        }
+
+        // ── Modal open / close ────────────────────────────────────────────
+        var backdrop  = document.getElementById('accountBackdrop');
+        var modalBody = document.getElementById('accountModalBody');
+        var openBtn   = document.getElementById('openAccountModal');
+        var closeBtn  = document.getElementById('closeAccountModal');
+        var loaded    = false;   // only fetch once per page load
+
+        function openModal() {
+            if (dropdown) {
+                dropdown.classList.remove('is-open');
+                if (btn) btn.setAttribute('aria-expanded', 'false');
+            }
+            backdrop.classList.add('is-open');
+            document.body.style.overflow = 'hidden';
+
+            if (!loaded) {
+                loaded = true;
+                fetchAccountContent();
+            }
+        }
+
+        function closeModal() {
+            backdrop.classList.remove('is-open');
+            document.body.style.overflow = '';
+        }
+
+        openBtn?.addEventListener('click', openModal);
+        closeBtn?.addEventListener('click', closeModal);
+
+        // Click backdrop (outside card) to close
+        backdrop?.addEventListener('click', function (e) {
+            if (e.target === backdrop) closeModal();
+        });
+
+        // Escape to close
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && backdrop?.classList.contains('is-open')) closeModal();
+        });
+
+        // ── Fetch /Account and inject content ────────────────────────────
+        function fetchAccountContent(url) {
+            var fetchUrl = url || '/Account';
+            fetch(fetchUrl, { credentials: 'same-origin' })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.text();
+                })
+                .then(function (html) {
+                    var parser = new DOMParser();
+                    var doc = parser.parseFromString(html, 'text/html');
+                    var fragment = doc.getElementById('account-modal-body');
+                    if (!fragment) {
+                        modalBody.innerHTML =
+                            '<div style="color:var(--error);font-size:13px">Could not load account info.</div>';
+                        return;
+                    }
+                    modalBody.innerHTML = fragment.innerHTML;
+                    wirePasswordForm();
+                })
+                .catch(function (err) {
+                    modalBody.innerHTML =
+                        '<div style="color:var(--error);font-size:13px">Error: ' + err.message + '</div>';
+                });
+        }
+
+        // ── Wire the change-password form inside the modal ────────────────
+        function wirePasswordForm() {
+            var form = modalBody.querySelector('#changePwForm');
+            if (!form) return;
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var submitBtn = form.querySelector('[type="submit"]');
+                var origText  = submitBtn ? submitBtn.textContent : '';
+                if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
+
+                var fd = new FormData(form);
+                fetch('/Account?handler=ChangePassword', {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin'
+                })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.text();
+                })
+                .then(function (html) {
+                    var parser = new DOMParser();
+                    var doc = parser.parseFromString(html, 'text/html');
+                    var fragment = doc.getElementById('account-modal-body');
+                    if (fragment) {
+                        modalBody.innerHTML = fragment.innerHTML;
+                        wirePasswordForm();
+                    }
+                })
+                .catch(function (err) {
+                    var fb = modalBody.querySelector('#modal-feedback');
+                    if (fb) {
+                        fb.style.display = '';
+                        fb.className = 'modal-alert modal-alert--error';
+                        fb.textContent = '⚠ ' + err.message;
+                    }
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
+                });
+            });
+        }
+    })();
+    </script>
+</body>
+</html>

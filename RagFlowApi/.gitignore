@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+.vs/
+
+# Runtime data — never commit
+users.json
+pending.json
+wwwroot/doc-cache/
+pending-docs/
+
+# Secrets — use environment variables in production
+appsettings.Development.json
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

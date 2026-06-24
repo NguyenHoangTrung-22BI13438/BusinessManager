@@ -1,0 +1,287 @@
+@page
+@model RagFlowApi.Pages.FillFormModel
+@{
+    ViewData["Title"] = "Fill Form";
+    Layout = "_Layout";
+}
+
+<style>
+    /* Allow the page body to scroll for this page */
+    .page-body { overflow-y: auto; }
+
+    .ff-page {
+        max-width: 760px;
+        margin: 40px auto;
+        padding: 0 20px 60px;
+    }
+    .ff-heading {
+        font-size: 22px;
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+    .ff-sub {
+        color: var(--text-muted);
+        font-size: 14px;
+        margin-bottom: 28px;
+    }
+    .ff-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+    .ff-card-title {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--text-muted);
+        margin-bottom: 16px;
+    }
+    .ff-upload-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .ff-file-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 16px;
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        font-size: 14px;
+        cursor: pointer;
+        transition: border-color .15s;
+    }
+    .ff-file-label:hover { border-color: var(--accent); }
+    .ff-file-name {
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+    .ff-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 20px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: var(--radius-sm);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background .15s;
+    }
+    .ff-btn:hover { background: var(--accent-hover); }
+    .ff-btn:disabled { opacity: .5; cursor: default; }
+    .ff-btn--outline {
+        background: transparent;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+    }
+    .ff-btn--outline:hover { background: var(--accent); color: #fff; }
+    .ff-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    .ff-table th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--text-muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+    }
+    .ff-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+    }
+    .ff-table tr:last-child td { border-bottom: none; }
+    .ff-field-label {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+    .ff-field-key {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--text-subtle);
+        margin-top: 2px;
+    }
+    .ff-input {
+        width: 100%;
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-size: 14px;
+        padding: 7px 11px;
+        font-family: var(--font);
+        transition: border-color .15s;
+    }
+    .ff-input:focus {
+        outline: none;
+        border-color: var(--accent);
+    }
+    .ff-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+    }
+    .ff-alert {
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        font-size: 14px;
+        margin-bottom: 20px;
+        border: 1px solid;
+    }
+    .ff-alert--error { background: #2a1a1a; border-color: var(--error); color: var(--error); }
+    .ff-badge {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+    }
+    .ff-spinner {
+        display: none;
+        width: 14px; height: 14px;
+        border: 2px solid rgba(255,255,255,.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: ff-spin .7s linear infinite;
+    }
+    @@keyframes ff-spin { to { transform: rotate(360deg); } }
+    .is-loading .ff-spinner { display: inline-block; }
+    .is-loading .ff-btn-label { display: none; }
+</style>
+
+<div class="ff-page">
+    <h1 class="ff-heading">Fill Form</h1>
+    <p class="ff-sub">
+        Upload a <strong>.docx</strong> or <strong>.txt</strong> file.
+        Detected patterns: Content Controls, <code>{{Field Name}}</code>, MERGEFIELD,
+        <code>Label: ………</code>, <code>Label: ________</code>, or <code>Label:</code> with blank after.
+        The AI will suggest values from the knowledge base — edit before downloading.
+    </p>
+
+    @* ── Error banner ── *@
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="ff-alert ff-alert--error">⚠ @Model.ErrorMessage</div>
+    }
+
+    @* ── Step 1: upload form (always visible when no fields yet) ── *@
+    @if (!Model.Fields.Any())
+    {
+        <div class="ff-card">
+            <div class="ff-card-title">Upload template</div>
+            <form method="post" asp-page-handler="Detect" enctype="multipart/form-data" id="detectForm">
+                <div class="ff-upload-row">
+                    <label class="ff-file-label" for="templateFile">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        Choose .docx / .txt file
+                    </label>
+                    <input type="file" id="templateFile" name="template"
+                           accept=".docx,.txt" class="visually-hidden-input" />
+                    <span class="ff-file-name" id="fileNameLabel">No file chosen</span>
+                </div>
+                <div style="margin-top:16px">
+                    <button type="submit" class="ff-btn" id="detectBtn">
+                        <span class="ff-spinner"></span>
+                        <span class="ff-btn-label">Detect fields &amp; suggest values</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    }
+
+    @* ── Step 2: editable field table + fill button ── *@
+    @if (Model.Fields.Any() && Model.TemplateId != null)
+    {
+        <div class="ff-card">
+            <div class="ff-card-title" style="display:flex;align-items:center;gap:10px;">
+                Detected fields — @Model.Fields.Count field@(Model.Fields.Count == 1 ? "" : "s")
+                @if (Model.FromCache)
+                {
+                    <span class="ff-badge" title="Fields and suggested values loaded from cache — no re-processing needed">
+                        ⚡ from cache
+                    </span>
+                }
+            </div>
+
+            <form method="post" asp-page-handler="Fill" id="fillForm">
+                <input type="hidden" name="templateId" value="@Model.TemplateId" />
+
+                <table class="ff-table">
+                    <thead>
+                        <tr>
+                            <th style="width:35%">Field</th>
+                            <th>AI-suggested value <span class="ff-badge">editable</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var field in Model.Fields)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="ff-field-label">@field.Label</div>
+                                    <div class="ff-field-key">@field.Key</div>
+                                </td>
+                                <td>
+                                    <input class="ff-input"
+                                           type="text"
+                                           name="v_@field.Key"
+                                           value="@field.SuggestedValue"
+                                           placeholder="(leave blank to skip)" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div class="ff-actions">
+                    <button type="submit" class="ff-btn" id="fillBtn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download filled document
+                    </button>
+                    <a href="/FillForm" class="ff-btn ff-btn--outline">Start over</a>
+                </div>
+            </form>
+        </div>
+    }
+</div>
+
+<script>
+    // Show chosen filename
+    const fileInput   = document.getElementById('templateFile');
+    const fileLabel   = document.getElementById('fileNameLabel');
+    fileInput?.addEventListener('change', () => {
+        fileLabel.textContent = fileInput.files[0]?.name ?? 'No file chosen';
+    });
+
+    // Disable detect button while processing
+    document.getElementById('detectForm')?.addEventListener('submit', () => {
+        const btn = document.getElementById('detectBtn');
+        if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
+    });
+</script>

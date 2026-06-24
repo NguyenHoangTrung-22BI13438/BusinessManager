@@ -1,0 +1,232 @@
+@page
+@model RagFlowApi.Pages.RegisterModel
+@{
+    ViewData["Title"] = "Create account";
+    Layout = "_Layout";
+}
+
+<div class="auth-shell">
+    <div class="auth-card">
+
+        <div class="auth-header">
+            <span class="auth-logo">⬡</span>
+            <h1 class="auth-title">Create account</h1>
+            <p class="auth-sub">Your personal knowledge base will be set up automatically.</p>
+        </div>
+
+        @* Error alert *@
+        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+        {
+            <div class="alert alert--error">
+                ⚠ @Model.ErrorMessage
+            </div>
+        }
+
+        <form method="post" class="auth-form">
+
+            <div class="auth-field">
+                <label class="auth-label" for="username">Username</label>
+                <input class="auth-input"
+                       type="text"
+                       id="username"
+                       name="username"
+                       value="@Model.Username"
+                       autocomplete="username"
+                       placeholder="e.g. tung_vu"
+                       required />
+                <span class="auth-hint">Letters, numbers, _ and - only. 3–32 characters.</span>
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="displayName">Display name <span class="auth-optional">(optional)</span></label>
+                <input class="auth-input"
+                       type="text"
+                       id="displayName"
+                       name="displayName"
+                       value="@Model.DisplayName"
+                       autocomplete="name"
+                       placeholder="e.g. Tùng Vũ" />
+                <span class="auth-hint">Shown in the navigation bar. Defaults to your username.</span>
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="password">Password</label>
+                <input class="auth-input"
+                       type="password"
+                       id="password"
+                       name="password"
+                       autocomplete="new-password"
+                       placeholder="At least 6 characters"
+                       required />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="confirmPassword">Confirm password</label>
+                <input class="auth-input"
+                       type="password"
+                       id="confirmPassword"
+                       name="confirmPassword"
+                       autocomplete="new-password"
+                       placeholder="Repeat your password"
+                       required />
+            </div>
+
+            <button type="submit" class="btn btn--primary auth-submit" id="registerBtn">
+                <span class="btn-label">Create account</span>
+                <span class="btn-spinner" aria-hidden="true"></span>
+            </button>
+
+        </form>
+
+        <p class="auth-footer">
+            Already have an account?
+            <a href="/Login" class="inline-link">Sign in</a>
+        </p>
+
+    </div>
+</div>
+
+<style>
+    /* ── Auth shell ────────────────────────────────────────────────────────── */
+    .auth-shell {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 16px;
+    }
+
+    .auth-card {
+        width: 100%;
+        max-width: 420px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 40px 36px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    /* ── Header ────────────────────────────────────────────────────────────── */
+    .auth-header {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .auth-logo {
+        font-size: 32px;
+        color: var(--accent);
+    }
+
+    .auth-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .auth-sub {
+        font-size: 13px;
+        color: var(--text-muted);
+        line-height: 1.5;
+    }
+
+    /* ── Form fields ───────────────────────────────────────────────────────── */
+    .auth-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .auth-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .auth-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .auth-optional {
+        font-weight: 400;
+        color: var(--text-muted);
+    }
+
+    .auth-input {
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        font-family: var(--font);
+        font-size: 14px;
+        color: var(--text-primary);
+        outline: none;
+        transition: border-color .15s;
+        width: 100%;
+    }
+
+        .auth-input:focus {
+            border-color: var(--border-focus);
+        }
+
+        .auth-input::placeholder {
+            color: var(--text-subtle);
+        }
+
+    .auth-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    /* ── Submit button ─────────────────────────────────────────────────────── */
+    .auth-submit {
+        width: 100%;
+        justify-content: center;
+        padding: 12px;
+        font-size: 15px;
+        margin-top: 4px;
+        position: relative;
+    }
+
+    .btn-spinner {
+        display: none;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin .7s linear infinite;
+    }
+
+    .auth-submit.is-loading .btn-label  { display: none; }
+    .auth-submit.is-loading .btn-spinner { display: inline-block; }
+
+    @@keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* ── Footer link ───────────────────────────────────────────────────────── */
+    .auth-footer {
+        text-align: center;
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+</style>
+
+<script>
+    // Show spinner while form is submitting
+    // (RAGFlow API calls during registration can take a few seconds)
+    document.querySelector('.auth-form')
+        ?.addEventListener('submit', () => {
+            document.getElementById('registerBtn')
+                ?.classList.add('is-loading');
+        });
+</script>

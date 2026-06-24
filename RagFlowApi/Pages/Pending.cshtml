@@ -1,0 +1,106 @@
+@page
+@model RagFlowApi.Pages.PendingModel
+@{
+    ViewData["Title"] = "Pending Review";
+    Layout = "_Layout";
+}
+
+@functions {
+    private static string FileIcon(string fileName)
+    {
+        var ext = fileName.LastIndexOf('.') is var i && i >= 0
+            ? fileName[(i + 1)..].ToLower() : "";
+        return ext switch
+        {
+            "pdf" => "📄",
+            "doc" or "docx" => "📝",
+            "xls" or "xlsx" => "📊",
+            "ppt" or "pptx" => "📽",
+            "txt" or "md" => "📃",
+            "png" or "jpg" or "jpeg"
+                or "gif" or "webp" => "🖼",
+            _ => "📁"
+        };
+    }
+}
+
+<section class="docs-shell">
+
+    <header class="docs-header">
+        <div>
+            <h1 class="docs-title">Pending Review</h1>
+            <p class="docs-subtitle">
+                @Model.Documents.Count
+                document@(Model.Documents.Count == 1 ? "" : "s") awaiting approval
+            </p>
+        </div>
+    </header>
+
+    @if (!Model.Documents.Any())
+    {
+        <div class="docs-empty">
+            <span class="docs-empty-icon">✅</span>
+            <p class="docs-empty-title">No documents pending review</p>
+            <p class="docs-empty-sub">All submissions have been processed.</p>
+        </div>
+    }
+    else
+    {
+        <div class="docs-table-wrap">
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Submitted by</th>
+                        <th>Date</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var doc in Model.Documents)
+                {
+                    <tr>
+                        <td>
+                            <div class="doc-name-cell">
+                                <span class="doc-icon">@FileIcon(doc.FileName)</span>
+                                <span class="doc-name" title="@doc.FileName">@doc.FileName</span>
+                            </div>
+                        </td>
+                        <td style="color:var(--text-muted);font-size:13px">
+                            @doc.UploadedBy
+                        </td>
+                        <td class="doc-date">
+                            @doc.UploadedAt.ToLocalTime().ToString("MMM dd, HH:mm")
+                        </td>
+                        <td class="doc-actions">
+                            <form method="post" class="inline-form">
+                                <input type="hidden" name="id" value="@doc.Id" />
+                                <button asp-page-handler="Approve"
+                                        class="btn-icon btn-icon--approve"
+                                        title="Approve — ingest into knowledge base">✓</button>
+                            </form>
+                            <form method="post" class="inline-form"
+                                  onsubmit="return confirm('Reject &quot;@doc.FileName&quot;? The file will be permanently deleted.')">
+                                <input type="hidden" name="id" value="@doc.Id" />
+                                <button asp-page-handler="Reject"
+                                        class="btn-icon btn-icon--danger"
+                                        title="Reject and delete">✕</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+</section>
+
+<style>
+    /* Approve button — mirrors btn-icon--danger pattern from documents.css */
+    .btn-icon--approve:hover {
+        background: rgba(45, 212, 160, .15);
+        color: var(--success);
+        border-color: rgba(45, 212, 160, .4);
+    }
+</style>

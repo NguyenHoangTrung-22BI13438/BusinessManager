@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(# Look at the XML structure of a MERGEFIELD more closely *)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 62006 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue; Write-Host \"Killed PID $\\($_.OwningProcess\\)\" }; Stop-Process -Name \"RagFlowApi\" -Force -ErrorAction SilentlyContinue; Write-Host \"Done\")",
+      "Bash(node -e ' *)",
+      "Bash(where node *)",
+      "Bash(where python *)",
+      "Bash(where py *)",
+      "Bash('C:\\\\Users\\\\thaoh\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe' -c ' *)",
+      "Read(//c/Users/thaoh/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/95bc9b39-ee9c-47bf-a211-c43dd9a5e5b2/300854ac-1ec9-428a-9e6d-60ec03d6811d/skills/docx/**)",
+      "Bash(pandoc --wrap=none \"D:\\\\USTH file\\\\Intership\\\\2026\\\\dataset\\\\Tai lieu tu van HSM\\\\TL11_ QT.01_ Quy trinh tuyen dung\\\\BM.01.10_ Hop dong dao tao nghe.docx\" -t plain)"
+    ]
+  }
+}

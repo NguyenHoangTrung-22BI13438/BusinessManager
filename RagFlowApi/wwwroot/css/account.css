@@ -1,0 +1,372 @@
+/* ══════════════════════════════════════════════════════════════════════════ */
+/* ── USER DROPDOWN ───────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+.nav-user-wrap {
+    position: relative;
+}
+
+/* Avatar trigger button */
+.nav-user-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 6px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer;
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: background .15s, border-color .15s, color .15s;
+    outline: none;
+}
+
+.nav-user-btn:hover,
+.nav-user-btn[aria-expanded="true"] {
+    background: rgba(79, 110, 247, .12);
+    border-color: rgba(79, 110, 247, .4);
+    color: var(--text-primary);
+}
+
+.nav-user-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+
+.nav-user-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.nav-user-chevron {
+    font-size: 10px;
+    opacity: .6;
+    transition: transform .2s;
+    flex-shrink: 0;
+}
+
+.nav-user-btn[aria-expanded="true"] .nav-user-chevron {
+    transform: rotate(180deg);
+}
+
+/* Dropdown menu */
+.nav-user-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 180px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+    padding: 6px;
+    z-index: 200;
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity .15s, transform .15s;
+}
+
+.nav-user-dropdown.is-open {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .12s, color .12s;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.dropdown-item--danger:hover {
+    background: rgba(247, 111, 111, .12);
+    color: var(--error);
+}
+
+.dropdown-item-icon {
+    font-size: 15px;
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/* ── BACKDROP + MODAL ────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+/* Full-screen backdrop: blurs everything behind it */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+}
+
+.modal-backdrop.is-open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Modal card */
+.modal-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
+    transform: translateY(12px) scale(.98);
+    transition: transform .22s cubic-bezier(.34, 1.3, .64, 1), opacity .2s;
+    opacity: 0;
+    overflow: hidden;
+}
+
+.modal-backdrop.is-open .modal-card {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+/* Modal sections */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: 6px;
+    line-height: 1;
+    transition: background .12s, color .12s;
+}
+
+.modal-close:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ── User info section ───────────────────────────────────────────────────── */
+.user-info-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.user-info-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+
+.user-info-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.user-info-display {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.user-info-username {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.user-info-date {
+    font-size: 12px;
+    color: var(--text-subtle);
+}
+
+.user-info-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.user-info-badge--admin {
+    background: rgba(79, 110, 247, .15);
+    color: var(--accent);
+    border: 1px solid rgba(79, 110, 247, .3);
+}
+
+.user-info-badge--user {
+    background: var(--bg-input);
+    color: var(--text-subtle);
+    border: 1px solid var(--border);
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+.modal-section-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+}
+
+/* ── Change password form ────────────────────────────────────────────────── */
+.modal-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-subtle);
+    margin-bottom: 12px;
+}
+
+.modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.modal-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.modal-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color .15s;
+    width: 100%;
+}
+
+.modal-input:focus {
+    border-color: var(--border-focus);
+}
+
+.modal-input::placeholder {
+    color: var(--text-subtle);
+}
+
+.modal-submit {
+    padding: 9px 20px;
+    font-size: 13px;
+    align-self: flex-end;
+}
+
+/* Inline alert inside modal (password change feedback) */
+.modal-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    border: 1px solid transparent;
+}
+
+.modal-alert--success {
+    background: rgba(45, 212, 160, .08);
+    border-color: rgba(45, 212, 160, .25);
+    color: var(--success);
+}
+
+.modal-alert--error {
+    background: rgba(247, 111, 111, .08);
+    border-color: rgba(247, 111, 111, .25);
+    color: var(--error);
+}
