@@ -10,8 +10,11 @@ obj/
 # Runtime data — never commit
 users.json
 pending.json
+form_library.json
+form_cache.json
 wwwroot/doc-cache/
 pending-docs/
+form-library/
 
 # Secrets — use environment variables in production
 appsettings.Development.json

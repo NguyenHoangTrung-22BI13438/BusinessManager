@@ -1,0 +1,61 @@
+@page
+@model RagFlowApi.Pages.FormLibraryModel
+@{
+    ViewData["Title"] = "Form Library";
+}
+
+<h2>Form Library</h2>
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <p style="color:red">@Model.ErrorMessage</p>
+}
+
+@if (Model.Templates.Count == 0)
+{
+    <p>No templates saved yet. Use <a href="/FillForm">Fill Form</a> to upload and save a template.</p>
+}
+else
+{
+    <table style="width:100%; border-collapse:collapse">
+        <thead>
+            <tr>
+                <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd">Name</th>
+                <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd">File</th>
+                <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd">Fields</th>
+                <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd">Saved by</th>
+                <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd">Date</th>
+                <th style="padding:8px; border-bottom:1px solid #ddd"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in Model.Templates)
+            {
+                <tr>
+                    <td style="padding:8px">@t.Name</td>
+                    <td style="padding:8px">@t.FileName</td>
+                    <td style="padding:8px">@t.Fields.Count fields</td>
+                    <td style="padding:8px">@t.UploadedBy</td>
+                    <td style="padding:8px">@t.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                    <td style="padding:8px; white-space:nowrap">
+                        <a href="/FillForm?handler=FromLibrary&id=@t.Id"
+                           style="margin-right:8px">Use</a>
+
+                        @if (User.IsInRole("admin") || t.UploadedBy == User.Identity!.Name)
+                        {
+                            <form method="post" asp-page-handler="Delete"
+                                  style="display:inline"
+                                  onsubmit="return confirm('Delete @t.Name?')">
+                                <input type="hidden" name="id" value="@t.Id" />
+                                <button type="submit"
+                                        style="background:none;border:none;color:red;cursor:pointer;padding:0">
+                                    Delete
+                                </button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

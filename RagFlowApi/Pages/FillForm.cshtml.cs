@@ -11,16 +11,21 @@ public class FillFormModel : PageModel
 {
     private readonly DocxFormFillerService _filler;
     private readonly FormTemplateCache     _cache;
+    private readonly FormLibraryStore      _library;
 
-    public List<FormField> Fields       { get; private set; } = [];
-    public string?         TemplateId   { get; private set; }
-    public string?         ErrorMessage { get; private set; }
-    public bool            FromCache    { get; private set; }
+    public List<FormField> Fields        { get; private set; } = [];
+    public string?         TemplateId    { get; private set; }
+    public string?         ErrorMessage  { get; private set; }
+    public string?         SuccessMessage { get; private set; }
+    public bool            FromCache     { get; private set; }
+    public bool            FromLibrary   { get; private set; }
 
-    public FillFormModel(DocxFormFillerService filler, FormTemplateCache cache)
+    public FillFormModel(DocxFormFillerService filler, FormTemplateCache cache,
+        FormLibraryStore library)
     {
-        _filler = filler;
-        _cache  = cache;
+        _filler  = filler;
+        _cache   = cache;
+        _library = library;
     }
 
     public void OnGet() { }
@@ -108,5 +113,61 @@ public class FillFormModel : PageModel
             ErrorMessage = $"Fill failed: {ex.Message}";
             return Page();
         }
+    }
+
+    // ── Step 2b: save current template to the library ─────────────────────────
+    public async Task<IActionResult> OnPostSaveToLibraryAsync(
+        string templateId, string libraryName)
+    {
+        if (string.IsNullOrWhiteSpace(templateId)) return BadRequest();
+        if (string.IsNullOrWhiteSpace(libraryName))
+        {
+            ErrorMessage = "Please enter a name for the library entry.";
+            return Page();
+        }
+
+        try
+        {
+            var path  = _filler.GetTemplatePath(templateId);
+            var bytes = await System.IO.File.ReadAllBytesAsync(path);
+            var fileName = Path.GetFileName(path);
+
+            var fields = _filler.DetectFields(templateId);
+            await _library.AddAsync(libraryName, fileName, bytes, fields,
+                User.Identity!.Name!);
+
+            SuccessMessage = $"Saved \"{libraryName}\" to the form library.";
+            TemplateId = templateId;
+            Fields = fields;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Could not save to library: {ex.Message}";
+        }
+
+        return Page();
+    }
+
+    // ── Load from library → detect step bypassed ──────────────────────────────
+    public async Task<IActionResult> OnGetFromLibraryAsync(string id)
+    {
+        var entry = await _library.GetByIdAsync(id);
+        if (entry is null)
+        {
+            ErrorMessage = "Template not found in library.";
+            return Page();
+        }
+
+        var bytes = _library.GetBytes(id);
+        if (bytes is null)
+        {
+            ErrorMessage = "Template file missing from library.";
+            return Page();
+        }
+
+        TemplateId  = await _filler.SaveTemplateBytesAsync(bytes, entry.FileName);
+        Fields      = entry.Fields;
+        FromLibrary = true;
+        return Page();
     }
 }

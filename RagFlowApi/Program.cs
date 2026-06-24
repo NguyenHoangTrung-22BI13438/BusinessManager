@@ -20,6 +20,7 @@ builder.Services.AddScoped<UserContext>();
 builder.Services.AddSingleton<PendingDocumentStore>();
 builder.Services.AddSingleton<RatingStore>();
 builder.Services.AddSingleton<FormTemplateCache>();
+builder.Services.AddSingleton<FormLibraryStore>();
 builder.Services.AddScoped<DocxFormFillerService>();
 
 // ── Async ingestion queue ─────────────────────────────────────────────────────

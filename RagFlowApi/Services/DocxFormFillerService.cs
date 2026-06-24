@@ -813,7 +813,7 @@ public class DocxFormFillerService
         }
     }
 
-    private string GetTemplatePath(string templateId)
+    internal string GetTemplatePath(string templateId)
     {
         if (!Regex.IsMatch(templateId, @"^[a-f0-9]{32}$"))
             throw new ArgumentException("Invalid template ID.");
