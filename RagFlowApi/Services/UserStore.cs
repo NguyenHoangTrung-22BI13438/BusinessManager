@@ -131,7 +131,7 @@ public class UserStore
                        ?? [];
 
             var idx = all.FindIndex(u =>
-                u.Username.Equals(updated.Username, StringComparison.OrdinalIgnoreCase));
+                u.Username?.Equals(updated.Username, StringComparison.OrdinalIgnoreCase) == true);
 
             if (idx < 0)
                 throw new InvalidOperationException(

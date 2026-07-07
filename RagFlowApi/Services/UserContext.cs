@@ -57,7 +57,7 @@ public class UserContext
     /// Loads the current user's record from users.json.
     /// Result is cached for the lifetime of this request.
     /// </summary>
-    private async Task<UserRecord> GetRecordAsync()
+    public async Task<UserRecord> GetRecordAsync()
     {
         if (_record is not null) return _record;
 

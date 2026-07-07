@@ -10,6 +10,7 @@ public class DotsOcrClient
 {
     private readonly HttpClient _http;
     private readonly ILogger<DotsOcrClient> _log;
+    private readonly PaddleOcrClient _paddle;
     private const string Model = "/workspace/weights/dots.mocr";
 
     // Stricter retry prompt — forces JSON array output explicitly.
@@ -20,10 +21,11 @@ public class DotsOcrClient
         "Each element must have \"bbox\", \"category\", and \"text\" fields. " +
         "Example: [{\"bbox\":[0,0,100,50],\"category\":\"Title\",\"text\":\"Hello\"}]";
 
-    public DotsOcrClient(HttpClient http, IConfiguration cfg, ILogger<DotsOcrClient> log)
+    public DotsOcrClient(HttpClient http, IConfiguration cfg, ILogger<DotsOcrClient> log, PaddleOcrClient paddle)
     {
-        _http = http;
-        _log  = log;
+        _http   = http;
+        _log    = log;
+        _paddle = paddle;
         _http.BaseAddress = new Uri(cfg["DotsOcr:BaseUrl"]!);
         // 10 minutes per request — vision inference on large/complex pages can be slow.
         _http.Timeout = TimeSpan.FromMinutes(10);
@@ -199,7 +201,18 @@ IMPORTANT: Respond with ONLY a valid JSON array. No markdown code fences, no exp
         // mark the job Done with no error — the image silently vanishes from RAG.
         if (elements.Count == 0)
         {
-            _log.LogWarning("[OCR] ExtractLayoutAsync returned no elements for {Mime}. Inserting placeholder.", mimeType);
+            if (_paddle.IsEnabled)
+            {
+                _log.LogInformation("[OCR] DotsOCR returned no elements — trying PaddleOCR fallback for {Mime}.", mimeType);
+                elements = await _paddle.ExtractTextAsync(imageBytes, mimeType);
+                if (elements.Count > 0)
+                    _log.LogInformation("[OCR] PaddleOCR fallback extracted {Count} elements.", elements.Count);
+            }
+        }
+
+        if (elements.Count == 0)
+        {
+            _log.LogWarning("[OCR] All OCR engines returned no elements for {Mime}. Inserting placeholder.", mimeType);
             elements.Add(new LayoutElement
             {
                 Category = LayoutCategory.Text,
@@ -236,9 +249,15 @@ IMPORTANT: Respond with ONLY a valid JSON array. No markdown code fences, no exp
                 var preprocessed = ImagePreprocessor.Preprocess(data.ToArray());
                 var pageElements = await ExtractLayoutAsync(preprocessed, "image/png");
 
+                if (pageElements.Count == 0 && _paddle.IsEnabled)
+                {
+                    _log.LogInformation("[OCR] Page {Page} — DotsOCR empty, trying PaddleOCR fallback.", pageNum);
+                    pageElements = await _paddle.ExtractTextAsync(preprocessed, "image/png");
+                }
+
                 if (pageElements.Count == 0)
                 {
-                    _log.LogWarning("[OCR] Page {Page} returned no elements.", pageNum);
+                    _log.LogWarning("[OCR] Page {Page} returned no elements from any engine.", pageNum);
                     result.Add(new LayoutElement
                     {
                         Category = LayoutCategory.Text,

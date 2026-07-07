@@ -57,4 +57,42 @@ public class UserRecord
     /// will perform the binding and set this to true.
     /// </summary>
     public bool DatasetBound { get; set; } = false;
+
+    // ── Personal profile — used to pre-fill form fields automatically ─────────
+
+    /// <summary>Full legal name (Họ và tên).</summary>
+    public string FullName      { get; set; } = string.Empty;
+
+    /// <summary>Date of birth in dd/MM/yyyy format (Ngày sinh).</summary>
+    public string DateOfBirth   { get; set; } = string.Empty;
+
+    /// <summary>Place of birth (Nơi sinh / Quê quán).</summary>
+    public string PlaceOfBirth  { get; set; } = string.Empty;
+
+    /// <summary>Nationality / ethnicity (Quốc tịch / Dân tộc).</summary>
+    public string Nationality   { get; set; } = string.Empty;
+
+    /// <summary>National ID number — CMND or CCCD (Số CMND/CCCD).</summary>
+    public string IdNumber      { get; set; } = string.Empty;
+
+    /// <summary>Date the ID was issued in dd/MM/yyyy format (Ngày cấp).</summary>
+    public string IdIssuedDate  { get; set; } = string.Empty;
+
+    /// <summary>Issuing authority (Nơi cấp).</summary>
+    public string IdIssuedPlace { get; set; } = string.Empty;
+
+    /// <summary>Job title / position (Chức vụ / Chức danh).</summary>
+    public string JobTitle      { get; set; } = string.Empty;
+
+    /// <summary>Department or unit (Phòng ban / Đơn vị).</summary>
+    public string Department    { get; set; } = string.Empty;
+
+    /// <summary>Phone number (Số điện thoại).</summary>
+    public string PhoneNumber   { get; set; } = string.Empty;
+
+    /// <summary>Email address.</summary>
+    public string Email         { get; set; } = string.Empty;
+
+    /// <summary>Residential address (Địa chỉ / Nơi ở).</summary>
+    public string Address       { get; set; } = string.Empty;
 }

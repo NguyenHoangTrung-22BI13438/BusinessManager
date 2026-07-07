@@ -54,14 +54,26 @@ public class IngestionPipeline
         {
             await File.WriteAllBytesAsync(docxPath, docxBytes);
 
+            // Each job gets its own isolated LO profile so that a running
+            // LibreOffice GUI instance does not intercept the headless conversion
+            // (without this, LO silently exits 0 and produces no PDF).
+            var loProfile = "file:///" + tempDir.Replace('\\', '/') + "/lo-profile";
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = sofficePath,
-                Arguments = $"--headless --convert-to pdf --outdir \"{tempDir}\" \"{docxPath}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
+            // Use ArgumentList (not Arguments) so .NET handles per-token quoting —
+            // string-style Arguments fails when file paths contain spaces.
+            psi.ArgumentList.Add("--headless");
+            psi.ArgumentList.Add($"-env:UserInstallation={loProfile}");
+            psi.ArgumentList.Add("--convert-to");
+            psi.ArgumentList.Add("pdf");
+            psi.ArgumentList.Add("--outdir");
+            psi.ArgumentList.Add(tempDir);
+            psi.ArgumentList.Add(docxPath);
 
             using var proc = System.Diagnostics.Process.Start(psi)!;
             await proc.WaitForExitAsync();

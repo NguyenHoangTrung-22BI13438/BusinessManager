@@ -36,24 +36,136 @@
 
     <div class="modal-section-divider"></div>
 
-    @* ── Change password ─────────────────────────────────────────────────── *@
-    <div>
-        <p class="modal-section-title">Change password</p>
+    @* ── Tab bar ─────────────────────────────────────────────────────────── *@
+    <div class="acct-tabs" id="acctTabs">
+        <button type="button" class="acct-tab @(Model.ActiveSection == "profile" ? "acct-tab--active" : "")"
+                data-tab="profileSection">Personal Info</button>
+        <button type="button" class="acct-tab @(Model.ActiveSection == "password" ? "acct-tab--active" : "")"
+                data-tab="passwordSection">Change Password</button>
+    </div>
 
-        @* Feedback (shown after submit) *@
-        @if (!string.IsNullOrWhiteSpace(Model.FeedbackMsg))
-        {
-            <div id="modal-feedback"
-                 class="modal-alert @(Model.FeedbackOk ? "modal-alert--success" : "modal-alert--error")"
-                 style="margin-bottom:12px">
-                @(Model.FeedbackOk ? "✓" : "⚠") @Model.FeedbackMsg
+    @* ── Feedback alert (shared) ─────────────────────────────────────────── *@
+    @if (!string.IsNullOrWhiteSpace(Model.FeedbackMsg))
+    {
+        <div id="modal-feedback"
+             class="modal-alert @(Model.FeedbackOk ? "modal-alert--success" : "modal-alert--error")"
+             style="margin:12px 0">
+            @(Model.FeedbackOk ? "✓" : "⚠") @Model.FeedbackMsg
+        </div>
+    }
+    else
+    {
+        <div id="modal-feedback" style="display:none"></div>
+    }
+
+    @* ── Personal Info section ───────────────────────────────────────────── *@
+    <div id="profileSection" class="acct-section" style="display:none">
+
+        <p class="modal-section-hint">
+            These values are used to automatically pre-fill forms in the
+            <a href="/FormLibrary" style="color:var(--accent)">Form Library</a>.
+            Fields marked <span class="src-badge src-badge--profile">👤 profile</span>
+            in the form editor came from here.
+        </p>
+
+        <form id="profileForm" class="modal-form" method="post"
+              asp-page-handler="UpdateProfile">
+            @Html.AntiForgeryToken()
+
+            <div class="prof-grid">
+                <div class="modal-field prof-span2">
+                    <label class="modal-label" for="pfFullName">Full name (Họ và tên)</label>
+                    <input class="modal-input" type="text" id="pfFullName"
+                           name="ProfileFullName" value="@rec?.FullName"
+                           placeholder="e.g. Nguyễn Văn A" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfDob">Date of birth (Ngày sinh)</label>
+                    <input class="modal-input" type="text" id="pfDob"
+                           name="ProfileDateOfBirth" value="@rec?.DateOfBirth"
+                           placeholder="dd/MM/yyyy" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfPob">Place of birth (Nơi sinh)</label>
+                    <input class="modal-input" type="text" id="pfPob"
+                           name="ProfilePlaceOfBirth" value="@rec?.PlaceOfBirth"
+                           placeholder="e.g. Hà Nội" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfNat">Nationality (Quốc tịch)</label>
+                    <input class="modal-input" type="text" id="pfNat"
+                           name="ProfileNationality" value="@rec?.Nationality"
+                           placeholder="e.g. Việt Nam" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfId">ID number (Số CMND/CCCD)</label>
+                    <input class="modal-input" type="text" id="pfId"
+                           name="ProfileIdNumber" value="@rec?.IdNumber"
+                           placeholder="12-digit CCCD or 9-digit CMND" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfIdDate">ID issued date (Ngày cấp)</label>
+                    <input class="modal-input" type="text" id="pfIdDate"
+                           name="ProfileIdIssuedDate" value="@rec?.IdIssuedDate"
+                           placeholder="dd/MM/yyyy" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfIdPlace">ID issued by (Nơi cấp)</label>
+                    <input class="modal-input" type="text" id="pfIdPlace"
+                           name="ProfileIdIssuedPlace" value="@rec?.IdIssuedPlace"
+                           placeholder="e.g. Cục Cảnh sát QLHC về TTXH" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfJob">Job title (Chức vụ)</label>
+                    <input class="modal-input" type="text" id="pfJob"
+                           name="ProfileJobTitle" value="@rec?.JobTitle"
+                           placeholder="e.g. Nhân viên kỹ thuật" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfDept">Department (Phòng ban / Đơn vị)</label>
+                    <input class="modal-input" type="text" id="pfDept"
+                           name="ProfileDepartment" value="@rec?.Department"
+                           placeholder="e.g. Phòng Kỹ thuật" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfPhone">Phone (Số điện thoại)</label>
+                    <input class="modal-input" type="tel" id="pfPhone"
+                           name="ProfilePhoneNumber" value="@rec?.PhoneNumber"
+                           placeholder="e.g. 0912 345 678" />
+                </div>
+
+                <div class="modal-field">
+                    <label class="modal-label" for="pfEmail">Email</label>
+                    <input class="modal-input" type="email" id="pfEmail"
+                           name="ProfileEmail" value="@rec?.Email"
+                           placeholder="e.g. a.nguyen@company.com" />
+                </div>
+
+                <div class="modal-field prof-span2">
+                    <label class="modal-label" for="pfAddr">Address (Địa chỉ)</label>
+                    <input class="modal-input" type="text" id="pfAddr"
+                           name="ProfileAddress" value="@rec?.Address"
+                           placeholder="e.g. 123 Nguyễn Trãi, Quận 1, TP.HCM" />
+                </div>
             </div>
-        }
-        else
-        {
-            @* Empty placeholder so JS can always find #modal-feedback *@
-            <div id="modal-feedback" style="display:none"></div>
-        }
+
+            <button type="submit" class="btn btn--primary modal-submit" style="margin-top:8px">
+                Save profile
+            </button>
+        </form>
+    </div>
+
+    @* ── Change password section ─────────────────────────────────────────── *@
+    <div id="passwordSection" class="acct-section" style="display:none">
 
         <form id="changePwForm" class="modal-form"
               method="post"
@@ -96,3 +208,5 @@
     </div>
 
 </div>
+
+

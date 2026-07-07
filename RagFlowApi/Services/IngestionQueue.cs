@@ -112,19 +112,6 @@ public sealed class IngestionWorker : BackgroundService
 
             try
             {
-                // ── Pre-flight: fail fast if VLLM is down ─────────────────────
-                if (NeedsVllm(job) && !await VllmIsReachableAsync())
-                {
-                    _log.LogWarning("[Ingest] VLLM unreachable — failing job {Id}", job.JobId);
-                    _store.Update(job.JobId, s =>
-                    {
-                        s.State      = JobState.Failed;
-                        s.Message    = "OCR service (VLLM) is unreachable. Please try again later.";
-                        s.FinishedAt = DateTime.UtcNow;
-                    });
-                    continue;
-                }
-
                 // IngestionPipeline is Scoped — create a fresh scope per job
                 await using var scope = _scopes.CreateAsyncScope();
                 var pipeline = scope.ServiceProvider

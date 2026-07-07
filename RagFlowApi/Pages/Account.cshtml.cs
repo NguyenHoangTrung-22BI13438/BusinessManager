@@ -8,28 +8,41 @@ namespace RagFlowApi.Pages;
 
 /// <summary>
 /// Razor Page at /Account.
-/// GET  — returns the user info + change-password modal fragment.
+/// GET  — returns the user info + change-password + profile-edit modal fragment.
 ///         The JS in _Layout fetches this URL and injects the rendered
 ///         #account-modal-body element into the backdrop modal.
-/// POST (handler=ChangePassword) — validates the old password,
-///         hashes the new one, and writes it back to users.json.
-///         Returns a partial page; the JS reads #modal-feedback for
-///         the inline success / error message.
+/// POST (handler=ChangePassword) — validates the old password, hashes the new one.
+/// POST (handler=UpdateProfile)  — saves personal-info fields to users.json.
 /// </summary>
 [Authorize]
 public class AccountModel : PageModel
 {
     private readonly UserStore _store;
 
-    // ── Bound form fields ─────────────────────────────────────────────────
+    // ── Change-password fields ────────────────────────────────────────────
     [BindProperty] public string CurrentPassword { get; set; } = string.Empty;
     [BindProperty] public string NewPassword     { get; set; } = string.Empty;
     [BindProperty] public string ConfirmPassword { get; set; } = string.Empty;
 
+    // ── Profile fields ────────────────────────────────────────────────────
+    [BindProperty] public string ProfileFullName      { get; set; } = string.Empty;
+    [BindProperty] public string ProfileDateOfBirth   { get; set; } = string.Empty;
+    [BindProperty] public string ProfilePlaceOfBirth  { get; set; } = string.Empty;
+    [BindProperty] public string ProfileNationality   { get; set; } = string.Empty;
+    [BindProperty] public string ProfileIdNumber      { get; set; } = string.Empty;
+    [BindProperty] public string ProfileIdIssuedDate  { get; set; } = string.Empty;
+    [BindProperty] public string ProfileIdIssuedPlace { get; set; } = string.Empty;
+    [BindProperty] public string ProfileJobTitle      { get; set; } = string.Empty;
+    [BindProperty] public string ProfileDepartment    { get; set; } = string.Empty;
+    [BindProperty] public string ProfilePhoneNumber   { get; set; } = string.Empty;
+    [BindProperty] public string ProfileEmail         { get; set; } = string.Empty;
+    [BindProperty] public string ProfileAddress       { get; set; } = string.Empty;
+
     // ── Display data ──────────────────────────────────────────────────────
-    public UserRecord? Record       { get; private set; }
-    public string?     FeedbackMsg  { get; private set; }
-    public bool        FeedbackOk   { get; private set; }
+    public UserRecord? Record         { get; private set; }
+    public string?     FeedbackMsg    { get; private set; }
+    public bool        FeedbackOk     { get; private set; }
+    public string      ActiveSection  { get; private set; } = "password";
 
     public AccountModel(UserStore store) => _store = store;
 
@@ -42,7 +55,17 @@ public class AccountModel : PageModel
     // ── POST: change password ─────────────────────────────────────────────
     public async Task<IActionResult> OnPostChangePasswordAsync()
     {
-        Record = await _store.GetByUsernameAsync(User.Identity!.Name!);
+        ActiveSection = "password";
+
+        var username = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            FeedbackMsg = "Could not identify the current user.";
+            FeedbackOk  = false;
+            return Page();
+        }
+
+        Record = await _store.GetByUsernameAsync(username);
 
         if (Record is null)
         {
@@ -51,7 +74,6 @@ public class AccountModel : PageModel
             return Page();
         }
 
-        // Validate current password
         if (!_store.VerifyPassword(Record, CurrentPassword))
         {
             FeedbackMsg = "Current password is incorrect.";
@@ -59,7 +81,6 @@ public class AccountModel : PageModel
             return Page();
         }
 
-        // Validate new password
         if (string.IsNullOrWhiteSpace(NewPassword) || NewPassword.Length < 6)
         {
             FeedbackMsg = "New password must be at least 6 characters.";
@@ -74,11 +95,54 @@ public class AccountModel : PageModel
             return Page();
         }
 
-        // Persist
         Record.PasswordHash = _store.HashPassword(NewPassword);
         await _store.UpdateAsync(Record);
 
         FeedbackMsg = "Password changed successfully.";
+        FeedbackOk  = true;
+        return Page();
+    }
+
+    // ── POST: update personal-info profile ───────────────────────────────
+    public async Task<IActionResult> OnPostUpdateProfileAsync()
+    {
+        ActiveSection = "profile";
+
+        var username = User.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            FeedbackMsg = "Could not identify the current user.";
+            FeedbackOk  = false;
+            return Page();
+        }
+
+        Record = await _store.GetByUsernameAsync(username);
+
+        if (Record is null)
+        {
+            FeedbackMsg = "User record not found.";
+            FeedbackOk  = false;
+            return Page();
+        }
+
+        static string Safe(string? s) => s?.Trim() ?? string.Empty;
+
+        Record.FullName      = Safe(ProfileFullName);
+        Record.DateOfBirth   = Safe(ProfileDateOfBirth);
+        Record.PlaceOfBirth  = Safe(ProfilePlaceOfBirth);
+        Record.Nationality   = Safe(ProfileNationality);
+        Record.IdNumber      = Safe(ProfileIdNumber);
+        Record.IdIssuedDate  = Safe(ProfileIdIssuedDate);
+        Record.IdIssuedPlace = Safe(ProfileIdIssuedPlace);
+        Record.JobTitle      = Safe(ProfileJobTitle);
+        Record.Department    = Safe(ProfileDepartment);
+        Record.PhoneNumber   = Safe(ProfilePhoneNumber);
+        Record.Email         = Safe(ProfileEmail);
+        Record.Address       = Safe(ProfileAddress);
+
+        await _store.UpdateAsync(Record);
+
+        FeedbackMsg = "Profile updated successfully.";
         FeedbackOk  = true;
         return Page();
     }

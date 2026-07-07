@@ -148,7 +148,7 @@ public class FillFormModel : PageModel
         return Page();
     }
 
-    // ── Load from library → detect step bypassed ──────────────────────────────
+    // ── Load from library → apply profile values on top of stored suggestions ─
     public async Task<IActionResult> OnGetFromLibraryAsync(string id)
     {
         var entry = await _library.GetByIdAsync(id);
@@ -166,7 +166,9 @@ public class FillFormModel : PageModel
         }
 
         TemplateId  = await _filler.SaveTemplateBytesAsync(bytes, entry.FileName);
-        Fields      = entry.Fields;
+        // Re-run suggestions so the current user's profile values are applied.
+        // Stored AI suggestions are kept for fields not covered by the profile.
+        Fields      = await _filler.SuggestValuesAsync(entry.Fields);
         FromLibrary = true;
         return Page();
     }

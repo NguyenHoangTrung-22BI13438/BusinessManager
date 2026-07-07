@@ -6,13 +6,53 @@
 }
 
 <style>
-    /* Allow the page body to scroll for this page */
-    .page-body { overflow-y: auto; }
-
+    /* ── Upload step: single centered column ───────────────────────────── */
     .ff-page {
         max-width: 760px;
         margin: 40px auto;
         padding: 0 20px 60px;
+        overflow-y: auto;
+        width: 100%;
+    }
+
+    /* ── Detection result: split view ──────────────────────────────────── */
+    .ff-split {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+    .ff-split-left {
+        flex: 0 0 52%;
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #111420;
+    }
+    .ff-split-header {
+        padding: 10px 16px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--text-subtle);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .ff-preview-frame {
+        flex: 1;
+        border: none;
+        width: 100%;
+        background: #111420;
+    }
+    .ff-split-right {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px;
     }
     .ff-heading {
         font-size: 22px;
@@ -151,6 +191,13 @@
         background: var(--bg-input);
         border: 1px solid var(--border);
         color: var(--text-muted);
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .ff-badge--profile {
+        background: rgba(var(--accent-rgb, 99, 102, 241), .15);
+        border-color: var(--accent);
+        color: var(--accent);
     }
     .ff-spinner {
         display: none;
@@ -165,24 +212,24 @@
     .is-loading .ff-btn-label { display: none; }
 </style>
 
-<div class="ff-page">
-    <h1 class="ff-heading">Fill Form</h1>
-    <p class="ff-sub">
-        Upload a <strong>.docx</strong> or <strong>.txt</strong> file.
-        Detected patterns: Content Controls, <code>{{Field Name}}</code>, MERGEFIELD,
-        <code>Label: ………</code>, <code>Label: ________</code>, or <code>Label:</code> with blank after.
-        The AI will suggest values from the knowledge base — edit before downloading.
-    </p>
+@* ── Step 1: upload (single-column) ── *@
+@if (!Model.Fields.Any())
+{
+    <div class="ff-page">
+        <h1 class="ff-heading">Fill Form</h1>
+        <p class="ff-sub">
+            Upload a <strong>.docx</strong> or <strong>.txt</strong> file.
+            Detected patterns: Content Controls, <code>{{Field Name}}</code>, MERGEFIELD,
+            <code>Label: ………</code>, <code>Label: ________</code>, or <code>Label:</code> with blank after.
+            Fields matching your <a href="#" onclick="document.getElementById('accountBtn')?.click();return false;" style="color:var(--accent)">saved profile</a>
+            are pre-filled automatically — the AI fills the rest from the knowledge base.
+        </p>
 
-    @* ── Error banner ── *@
-    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-    {
-        <div class="ff-alert ff-alert--error">⚠ @Model.ErrorMessage</div>
-    }
+        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+        {
+            <div class="ff-alert ff-alert--error">⚠ @Model.ErrorMessage</div>
+        }
 
-    @* ── Step 1: upload form (always visible when no fields yet) ── *@
-    @if (!Model.Fields.Any())
-    {
         <div class="ff-card">
             <div class="ff-card-title">Upload template</div>
             <form method="post" asp-page-handler="Detect" enctype="multipart/form-data" id="detectForm">
@@ -208,68 +255,108 @@
                 </div>
             </form>
         </div>
-    }
+    </div>
+}
 
-    @* ── Step 2: editable field table + fill button ── *@
-    @if (Model.Fields.Any() && Model.TemplateId != null)
-    {
-        <div class="ff-card">
-            <div class="ff-card-title" style="display:flex;align-items:center;gap:10px;">
-                Detected fields — @Model.Fields.Count field@(Model.Fields.Count == 1 ? "" : "s")
-                @if (Model.FromCache)
-                {
-                    <span class="ff-badge" title="Fields and suggested values loaded from cache — no re-processing needed">
-                        ⚡ from cache
-                    </span>
-                }
+@* ── Step 2: side-by-side preview + field editor ── *@
+@if (Model.Fields.Any() && Model.TemplateId != null)
+{
+    <div class="ff-split">
+
+        @* Left: original document ── *@
+        <div class="ff-split-left">
+            <div class="ff-split-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                Original document
             </div>
-
-            <form method="post" asp-page-handler="Fill" id="fillForm">
-                <input type="hidden" name="templateId" value="@Model.TemplateId" />
-
-                <table class="ff-table">
-                    <thead>
-                        <tr>
-                            <th style="width:35%">Field</th>
-                            <th>AI-suggested value <span class="ff-badge">editable</span></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var field in Model.Fields)
-                        {
-                            <tr>
-                                <td>
-                                    <div class="ff-field-label">@field.Label</div>
-                                    <div class="ff-field-key">@field.Key</div>
-                                </td>
-                                <td>
-                                    <input class="ff-input"
-                                           type="text"
-                                           name="v_@field.Key"
-                                           value="@field.SuggestedValue"
-                                           placeholder="(leave blank to skip)" />
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-
-                <div class="ff-actions">
-                    <button type="submit" class="ff-btn" id="fillBtn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        Download filled document
-                    </button>
-                    <a href="/FillForm" class="ff-btn ff-btn--outline">Start over</a>
-                </div>
-            </form>
+            <iframe class="ff-preview-frame"
+                    src="/form-preview/@Model.TemplateId"
+                    title="Form preview"
+                    loading="lazy"></iframe>
         </div>
-    }
-</div>
+
+        @* Right: field editor ── *@
+        <div class="ff-split-right">
+
+            @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+            {
+                <div class="ff-alert ff-alert--error">⚠ @Model.ErrorMessage</div>
+            }
+
+            <div class="ff-card">
+                <div class="ff-card-title" style="display:flex;align-items:center;gap:10px;">
+                    Detected fields — @Model.Fields.Count field@(Model.Fields.Count == 1 ? "" : "s")
+                    @if (Model.FromCache)
+                    {
+                        <span class="ff-badge" title="Fields and suggested values loaded from cache">
+                            ⚡ from cache
+                        </span>
+                    }
+                </div>
+
+                <form method="post" asp-page-handler="Fill" id="fillForm">
+                    <input type="hidden" name="templateId" value="@Model.TemplateId" />
+
+                    <table class="ff-table">
+                        <thead>
+                            <tr>
+                                <th style="width:38%">Field</th>
+                                <th>Suggested value <span class="ff-badge">editable</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var field in Model.Fields)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="ff-field-label">@field.Label</div>
+                                        <div class="ff-field-key">@field.Key</div>
+                                    </td>
+                                    <td>
+                                        <div style="display:flex;align-items:center;gap:8px">
+                                            <input class="ff-input"
+                                                   type="text"
+                                                   name="v_@field.Key"
+                                                   value="@field.SuggestedValue"
+                                                   placeholder="(leave blank to skip)"
+                                                   style="flex:1" />
+                                            @if (field.Source == "profile")
+                                            {
+                                                <span class="ff-badge ff-badge--profile" title="Value from your profile">👤 profile</span>
+                                            }
+                                            else if (field.Source == "ai")
+                                            {
+                                                <span class="ff-badge" title="Value suggested by AI">✦ AI</span>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+
+                    <div class="ff-actions">
+                        <button type="submit" class="ff-btn" id="fillBtn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Download filled document
+                        </button>
+                        <a href="/FillForm" class="ff-btn ff-btn--outline">Start over</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+}
 
 <script>
     // Show chosen filename

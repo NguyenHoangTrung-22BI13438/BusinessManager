@@ -19,6 +19,7 @@ public class RagFlowService
     private readonly ILogger<RagFlowService> _log;
     private readonly IHttpClientFactory _factory;
     private readonly IMemoryCache _cache;
+    private readonly ConversationStore _store;
     private readonly string _apiKey;
     private readonly string _embeddingModel;
     private readonly string _llmId;
@@ -35,12 +36,13 @@ public class RagFlowService
     };
 
     public RagFlowService(HttpClient http, ILogger<RagFlowService> log, IConfiguration config,
-        IHttpClientFactory factory, IMemoryCache cache)
+        IHttpClientFactory factory, IMemoryCache cache, ConversationStore store)
     {
         _http = http;
         _log = log;
         _factory = factory;
         _cache = cache;
+        _store = store;
         _apiKey = config["RagFlow:ApiKey"]!;
         _embeddingModel = config["RagFlow:EmbeddingModel"] ?? "bge-m3@Ollama";
         _llmId = config["RagFlow:LlmId"] ?? "gemini-2.5-flash@Gemini";
@@ -121,10 +123,17 @@ public class RagFlowService
     // ── 6. Get message history ────────────────────────────────────────────────
     public async Task<List<ChatMessage>> GetMessagesAsync(string assistantId, string sessionId)
     {
-        // Return cached messages if available (populated by AskQuestionAsync)
         var cacheKey = $"messages:{sessionId}";
         if (_cache.TryGetValue(cacheKey, out List<ChatMessage>? cached) && cached?.Count > 0)
             return cached;
+
+        // File store survives restarts; check it before hitting RAGFlow
+        var stored = await _store.LoadAsync(sessionId);
+        if (stored?.Count > 0)
+        {
+            _cache.Set(cacheKey, stored, TimeSpan.FromHours(24));
+            return stored;
+        }
 
         return await GetMessagesFromRagFlowAsync(assistantId, sessionId);
     }
@@ -227,13 +236,15 @@ public class RagFlowService
         var contexts = chunks.Select(c => c.Content).ToList();
         var answer = await CallGeminiForAnswerAsync(question, contexts);
 
-        // 4. Persist Q&A in cache so GetMessagesAsync can return history
+        // 4. Persist Q&A — load from file first so history survives restarts
         var cacheKey = $"messages:{sessionId}";
-        var history = _cache.GetOrCreate(cacheKey, _ => new List<ChatMessage>())!;
+        if (!_cache.TryGetValue(cacheKey, out List<ChatMessage>? history) || history == null)
+            history = await _store.LoadAsync(sessionId) ?? [];
         history.Add(new ChatMessage("user", question, StableMessageId("user", question + history.Count)));
         var aiId = StableMessageId("assistant", answer + history.Count);
         history.Add(new ChatMessage("assistant", answer, aiId) { Chunks = chunks });
         _cache.Set(cacheKey, history, TimeSpan.FromHours(24));
+        await _store.SaveAsync(sessionId, history);
 
         // 5. Return JSON in RagFlow completion format so all existing callers work
         return BuildCompletionJson(answer, chunks);
@@ -291,12 +302,17 @@ public class RagFlowService
     private async Task<string> CallGeminiForAnswerAsync(string question, List<string> contexts)
     {
         var contextBlock = contexts.Count > 0
-            ? string.Join("\n\n", contexts.Select((c, i) => $"[{i + 1}] {c}"))
+            ? string.Join("\n\n", contexts.Select((c, i) => $"[ID:{i}] {c}"))
             : "(no relevant context found)";
 
         var prompt = $"""
             You are a helpful assistant. Answer the question using ONLY the provided context.
             If the context does not contain the answer, say so clearly.
+
+            Each context snippet is labelled [ID:N] where N is a 0-based index.
+            Whenever you use information from a snippet, cite it inline using exactly [ID:N]
+            (e.g. "The policy states [ID:0] that…"). Use the label exactly as shown; do not
+            change the format (no parentheses, no "Reference", no other wording).
 
             Context:
             {contextBlock}
@@ -309,7 +325,7 @@ public class RagFlowService
         var payload = new
         {
             contents = new[] { new { parts = new[] { new { text = prompt } } } },
-            generationConfig = new { temperature = 0.2, maxOutputTokens = 2048 }
+            generationConfig = new { temperature = 0.2, maxOutputTokens = 8192 }
         };
 
         try
@@ -360,6 +376,7 @@ public class RagFlowService
                         content = c.Content,
                         document_id = c.DocumentId,
                         document_name = c.DocumentName,
+                        image_id = c.ImageId,
                         similarity = c.Similarity
                     })
                 }

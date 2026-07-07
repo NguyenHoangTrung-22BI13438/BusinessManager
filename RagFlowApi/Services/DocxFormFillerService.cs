@@ -1,13 +1,15 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using RagFlowApi.Models;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace RagFlowApi.Services;
 
-public record FormField(string Key, string Label, string SuggestedValue = "");
+/// <param name="Source">"profile" = value came from the user's saved profile; "ai" = suggested by RAGFlow; "" = no suggestion yet.</param>
+public record FormField(string Key, string Label, string SuggestedValue = "", string Source = "");
 
 public class DocxFormFillerService
 {
@@ -79,6 +81,73 @@ public class DocxFormFillerService
             : "filled-form.docx";
     }
 
+    private static readonly string[] SofficeCandidates =
+    [
+        @"C:\Program Files\LibreOffice\program\soffice.exe",
+        @"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        "soffice"
+    ];
+
+    // ── Form preview (PDF for docx, HTML for txt) ─────────────────────────────
+    public async Task<(byte[] Data, string ContentType)?> GetPreviewAsync(string templateId)
+    {
+        var path = GetTemplatePath(templateId);
+
+        if (path.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+        {
+            var text = await File.ReadAllTextAsync(path, System.Text.Encoding.UTF8);
+            var escaped = System.Net.WebUtility.HtmlEncode(text);
+            var html = $"<html><body style=\"font-family:monospace;white-space:pre-wrap;" +
+                       $"padding:20px;background:#1e2335;color:#e8eaf2;font-size:13px;" +
+                       $"line-height:1.7\">{escaped}</body></html>";
+            return (System.Text.Encoding.UTF8.GetBytes(html), "text/html; charset=utf-8");
+        }
+
+        // Check cached preview
+        var pdfCache = Path.Combine(_tempDir, templateId + "-preview.pdf");
+        if (File.Exists(pdfCache))
+            return (await File.ReadAllBytesAsync(pdfCache), "application/pdf");
+
+        var pdfBytes = await ConvertDocxToPdfAsync(path);
+        if (pdfBytes is null) return null;
+
+        await File.WriteAllBytesAsync(pdfCache, pdfBytes);
+        return (pdfBytes, "application/pdf");
+    }
+
+    private static async Task<byte[]?> ConvertDocxToPdfAsync(string docxPath)
+    {
+        var sofficePath = SofficeCandidates.FirstOrDefault(File.Exists) ?? "soffice";
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var tempDocx = Path.Combine(tempDir, "form.docx");
+        try
+        {
+            File.Copy(docxPath, tempDocx, overwrite: true);
+            var loProfile = "file:///" + tempDir.Replace('\\', '/') + "/lo-profile";
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = sofficePath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            psi.ArgumentList.Add("--headless");
+            psi.ArgumentList.Add($"-env:UserInstallation={loProfile}");
+            psi.ArgumentList.Add("--convert-to");
+            psi.ArgumentList.Add("pdf");
+            psi.ArgumentList.Add("--outdir");
+            psi.ArgumentList.Add(tempDir);
+            psi.ArgumentList.Add(tempDocx);
+            using var proc = System.Diagnostics.Process.Start(psi)!;
+            await proc.WaitForExitAsync();
+            var pdf = Path.Combine(tempDir, "form.pdf");
+            return File.Exists(pdf) ? await File.ReadAllBytesAsync(pdf) : null;
+        }
+        catch { return null; }
+        finally { try { Directory.Delete(tempDir, recursive: true); } catch { } }
+    }
+
     // ── Detect fields — dispatches by file type ───────────────────────────────
     public List<FormField> DetectFields(string templateId)
     {
@@ -136,19 +205,38 @@ public class DocxFormFillerService
         return fields;
     }
 
-    // ── Suggest values via RAG (one call for all fields) ─────────────────────
+    // ── Suggest values: profile first, then RAG for any remaining gaps ───────
     public async Task<List<FormField>> SuggestValuesAsync(List<FormField> fields)
     {
         if (fields.Count == 0) return fields;
 
+        // Step 1 — Fill from the user's saved profile (instant, no network call).
+        var record        = await _userContext.GetRecordAsync();
+        var profileValues = BuildProfileValues(record);
+
+        var result = fields.Select(f =>
+        {
+            if (profileValues.TryGetValue(f.Key, out var pv) && !string.IsNullOrWhiteSpace(pv))
+                return f with { SuggestedValue = pv, Source = "profile" };
+
+            // Preserve any value already carried in (e.g., loaded from the form library).
+            return string.IsNullOrWhiteSpace(f.SuggestedValue)
+                ? f
+                : f with { Source = "ai" };
+        }).ToList();
+
+        // Step 2 — For fields still empty, ask RAGFlow.
+        var needsAi = result.Where(f => string.IsNullOrWhiteSpace(f.SuggestedValue)).ToList();
+        if (needsAi.Count == 0) return result;
+
         var assistantId = await _userContext.EnsureAssistantAsync();
         var sessionId   = await _ragflow.CreateSessionAsync(
             assistantId, $"__formfill_{Guid.NewGuid():N}");
-        if (sessionId == null) return fields;
+        if (sessionId == null) return result;
 
         try
         {
-            var fieldList = string.Join("\n", fields.Select(f => $"  - {f.Key}: {f.Label}"));
+            var fieldList = string.Join("\n", needsAi.Select(f => $"  - {f.Key}: {f.Label}"));
             var question  =
                 "You are a form-filling assistant. Based on the documents in the knowledge base, " +
                 "provide values for the following form fields.\n" +
@@ -164,24 +252,86 @@ public class DocxFormFillerService
             if (jsonMatch.Success)
             {
                 using var jdoc = JsonDocument.Parse(jsonMatch.Value);
-                return fields.Select(f =>
+                result = result.Select(f =>
                 {
+                    if (!string.IsNullOrWhiteSpace(f.SuggestedValue)) return f;   // already filled
                     var val = jdoc.RootElement.TryGetProperty(f.Key, out var v)
                               ? v.GetString() ?? "" : "";
-                    return f with { SuggestedValue = val.Trim() };
+                    return string.IsNullOrWhiteSpace(val) ? f : f with { SuggestedValue = val.Trim(), Source = "ai" };
                 }).ToList();
             }
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Form-fill suggestion failed");
+            _log.LogWarning(ex, "Form-fill RAG suggestion failed");
         }
         finally
         {
             try { await _ragflow.DeleteSessionAsync(assistantId, sessionId!); } catch { }
         }
 
-        return fields;
+        return result;
+    }
+
+    // ── Build a lookup from slugified field keys → user profile values ────────
+    private static Dictionary<string, string> BuildProfileValues(UserRecord user)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        void Set(string value, params string[] keys)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            foreach (var k in keys) map[k] = value;
+        }
+
+        Set(user.FullName,
+            "ho_va_ten", "ho_ten", "ten", "full_name", "name",
+            "nguoi_lao_dong", "ho_va_ten_nguoi_lao_dong", "hovaten",
+            "ho_va_ten_nguoi_duoc_dao_tao", "nguoi_duoc_dao_tao");
+
+        Set(user.DateOfBirth,
+            "ngay_sinh", "ngay_thang_nam_sinh", "sinh_ngay",
+            "date_of_birth", "dob", "nam_sinh", "ngaysinh");
+
+        Set(user.PlaceOfBirth,
+            "noi_sinh", "que_quan", "place_of_birth", "noi_sinh_nguyen_quan");
+
+        Set(user.Nationality,
+            "quoc_tich", "nationality", "dan_toc");
+
+        Set(user.IdNumber,
+            "so_cmnd", "so_cccd", "cmnd", "cccd",
+            "can_cuoc", "id_number", "so_chung_minh_nhan_dan",
+            "so_chung_minh", "so_cmndcccd", "cmndcccd",
+            "so_giay_to", "giay_to_tuy_than");
+
+        Set(user.IdIssuedDate,
+            "ngay_cap", "cap_ngay", "issued_date", "ngay_cap_cmnd", "ngay_cap_cccd");
+
+        Set(user.IdIssuedPlace,
+            "noi_cap", "co_quan_cap", "issued_place", "doi_cap", "noi_cap_cmnd");
+
+        Set(user.JobTitle,
+            "chuc_vu", "chuc_danh", "vi_tri", "role",
+            "job_title", "position", "nghe_nghiep", "nghe_nghiep_hien_tai");
+
+        Set(user.Department,
+            "phong_ban", "don_vi", "department", "to_chuc", "co_quan",
+            "co_quan_cong_tac", "don_vi_cong_tac");
+
+        Set(user.PhoneNumber,
+            "so_dien_thoai", "dien_thoai", "phone", "phone_number",
+            "sdt", "dien_thoai_di_dong", "so_dtdd");
+
+        Set(user.Email,
+            "email", "thu_dien_tu", "e_mail", "dia_chi_email", "dia_chi_thu_dien_tu");
+
+        Set(user.Address,
+            "dia_chi", "noi_o", "noi_cu_tru", "address",
+            "dia_chi_thuong_tru", "dia_chi_lien_lac", "dia_chi_hien_tai",
+            "dia_chi_noi_o", "ho_khau_thuong_tru");
+
+        return map;
     }
 
     // ── Fill template — dispatches by file type ───────────────────────────────

@@ -9,7 +9,8 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddHttpClient<DotsOcrClient>();      
+builder.Services.AddHttpClient<DotsOcrClient>();
+builder.Services.AddHttpClient<PaddleOcrClient>();
 builder.Services.AddScoped<IParser, DotsOcrParser>();
 builder.Services.AddSingleton<LayoutChunker>();
 builder.Services.AddScoped<IngestionPipeline>();
@@ -21,6 +22,7 @@ builder.Services.AddSingleton<PendingDocumentStore>();
 builder.Services.AddSingleton<RatingStore>();
 builder.Services.AddSingleton<FormTemplateCache>();
 builder.Services.AddSingleton<FormLibraryStore>();
+builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddScoped<DocxFormFillerService>();
 
 // ── Async ingestion queue ─────────────────────────────────────────────────────
@@ -114,6 +116,18 @@ app.MapPost("/test-ocr", async (IFormFile file, IParser parser) =>
 .RequireAuthorization("AdminOnly")
 .WithTags("Debug");
 
+
+app.MapGet("/form-preview/{templateId}", async (string templateId, DocxFormFillerService filler) =>
+{
+    try
+    {
+        var result = await filler.GetPreviewAsync(templateId);
+        if (result is null) return Results.NotFound();
+        return Results.File(result.Value.Data, result.Value.ContentType);
+    }
+    catch { return Results.NotFound(); }
+})
+.RequireAuthorization();
 
 app.MapGet("/document-file/{documentId}", (string documentId, IWebHostEnvironment env) =>
 {

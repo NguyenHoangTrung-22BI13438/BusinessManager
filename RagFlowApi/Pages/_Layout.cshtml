@@ -193,7 +193,7 @@
                         return;
                     }
                     modalBody.innerHTML = fragment.innerHTML;
-                    wirePasswordForm();
+                    wireAccountModal();
                 })
                 .catch(function (err) {
                     modalBody.innerHTML =
@@ -201,9 +201,37 @@
                 });
         }
 
-        // ── Wire the change-password form inside the modal ────────────────
-        function wirePasswordForm() {
-            var form = modalBody.querySelector('#changePwForm');
+        // ── Wire everything inside the modal after any (re-)injection ─────
+        function wireAccountModal(activeSection) {
+            wireTabs(activeSection);
+            wireAjaxForm('changePwForm',  '/Account?handler=ChangePassword',  'password');
+            wireAjaxForm('profileForm',   '/Account?handler=UpdateProfile',   'profile');
+        }
+
+        // ── Tab switching ─────────────────────────────────────────────────
+        function wireTabs(activeSection) {
+            var tabs     = modalBody.querySelectorAll('.acct-tab');
+            var sections = modalBody.querySelectorAll('.acct-section');
+
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    tabs.forEach(function (t) { t.classList.remove('acct-tab--active'); });
+                    sections.forEach(function (s) { s.style.display = 'none'; });
+                    tab.classList.add('acct-tab--active');
+                    var target = modalBody.querySelector('#' + tab.dataset.tab);
+                    if (target) target.style.display = '';
+                });
+            });
+
+            // Activate the correct tab (server-supplied or default)
+            var target = activeSection || 'passwordSection';
+            var activeTab = modalBody.querySelector('[data-tab="' + target + '"]');
+            if (activeTab) activeTab.click();
+        }
+
+        // ── Generic AJAX form submit, re-injects modal on success ─────────
+        function wireAjaxForm(formId, url, sectionOnSuccess) {
+            var form = modalBody.querySelector('#' + formId);
             if (!form) return;
 
             form.addEventListener('submit', function (e) {
@@ -212,10 +240,9 @@
                 var origText  = submitBtn ? submitBtn.textContent : '';
                 if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
 
-                var fd = new FormData(form);
-                fetch('/Account?handler=ChangePassword', {
+                fetch(url, {
                     method: 'POST',
-                    body: fd,
+                    body: new FormData(form),
                     credentials: 'same-origin'
                 })
                 .then(function (r) {
@@ -224,11 +251,11 @@
                 })
                 .then(function (html) {
                     var parser = new DOMParser();
-                    var doc = parser.parseFromString(html, 'text/html');
-                    var fragment = doc.getElementById('account-modal-body');
-                    if (fragment) {
-                        modalBody.innerHTML = fragment.innerHTML;
-                        wirePasswordForm();
+                    var doc    = parser.parseFromString(html, 'text/html');
+                    var frag   = doc.getElementById('account-modal-body');
+                    if (frag) {
+                        modalBody.innerHTML = frag.innerHTML;
+                        wireAccountModal(sectionOnSuccess + 'Section');
                     }
                 })
                 .catch(function (err) {
