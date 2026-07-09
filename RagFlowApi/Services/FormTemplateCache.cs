@@ -1,67 +1,53 @@
+using Dapper;
 using System.Text.Json;
 
 namespace RagFlowApi.Services;
 
-/// <summary>
-/// Persistent cache that maps a file's SHA-256 hash to its detected+suggested fields.
-/// Same file uploaded again → instant result, no re-detection or AI call.
-/// Stored in form_cache.json alongside users.json/ratings.json.
-/// </summary>
 public class FormTemplateCache
 {
-    private readonly string _path;
-    private readonly SemaphoreSlim _sem = new(1, 1);
-    private Dictionary<string, CacheEntry> _data = new();
-
-    private record CacheEntry(List<FormField> Fields, DateTime CachedAt);
+    private readonly AppDbContext _db;
 
     private static readonly JsonSerializerOptions _opts = new()
     {
-        WriteIndented    = false,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public FormTemplateCache(IWebHostEnvironment env)
+    public FormTemplateCache(AppDbContext db)
     {
-        _path = Path.Combine(env.ContentRootPath, "form_cache.json");
-        if (!File.Exists(_path)) return;
-        try
-        {
-            var json = File.ReadAllText(_path);
-            _data = JsonSerializer.Deserialize<Dictionary<string, CacheEntry>>(json, _opts) ?? new();
-        }
-        catch { _data = new(); }
+        _db = db;
     }
 
-    /// <summary>Returns cached fields for the given file hash, or null on miss.</summary>
     public async Task<List<FormField>?> GetAsync(string hash)
     {
-        await _sem.WaitAsync();
-        try { return _data.TryGetValue(hash, out var e) ? e.Fields : null; }
-        finally { _sem.Release(); }
+        await using var conn = _db.CreateConnection();
+        var json = await conn.QueryFirstOrDefaultAsync<string>(
+            "SELECT fields_json FROM form_field_cache WHERE file_hash = @h",
+            new { h = hash });
+
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return JsonSerializer.Deserialize<List<FormField>>(json, _opts); }
+        catch { return null; }
     }
 
-    /// <summary>Stores detected+suggested fields under the given file hash.</summary>
     public async Task SetAsync(string hash, List<FormField> fields)
     {
-        await _sem.WaitAsync();
-        try
-        {
-            _data[hash] = new CacheEntry(fields, DateTime.UtcNow);
-            Prune();
-            await File.WriteAllTextAsync(_path, JsonSerializer.Serialize(_data, _opts));
-        }
-        finally { _sem.Release(); }
-    }
+        await using var conn = _db.CreateConnection();
+        var json = JsonSerializer.Serialize(fields, _opts);
 
-    // Keep at most 500 entries; evict the oldest when over the limit.
-    private void Prune()
-    {
-        if (_data.Count <= 500) return;
-        var toRemove = _data.OrderBy(kv => kv.Value.CachedAt)
-                            .Take(_data.Count - 500)
-                            .Select(kv => kv.Key)
-                            .ToList();
-        foreach (var k in toRemove) _data.Remove(k);
+        await conn.ExecuteAsync(@"
+            INSERT INTO form_field_cache (file_hash, fields_json, cached_at)
+            VALUES (@h, @j, datetime('now'))
+            ON DUPLICATE KEY UPDATE fields_json = @j, cached_at = UTC_TIMESTAMP()",
+            new { h = hash, j = json });
+
+        // Keep at most 500 entries; evict the oldest
+        await conn.ExecuteAsync(@"
+            DELETE FROM form_field_cache
+            WHERE file_hash NOT IN (
+                SELECT file_hash FROM (
+                    SELECT file_hash FROM form_field_cache
+                    ORDER BY cached_at DESC LIMIT 500
+                ) sub
+            )");
     }
 }

@@ -20,11 +20,13 @@ public class RagFlowService
     private readonly IHttpClientFactory _factory;
     private readonly IMemoryCache _cache;
     private readonly ConversationStore _store;
+    private readonly HybridRetriever _retriever;
     private readonly string _apiKey;
     private readonly string _embeddingModel;
     private readonly string _llmId;
     private readonly string _geminiApiKey;
     private readonly string _defaultDatasetId;
+    private readonly double _bm25Weight;
 
     private const string GeminiAnswerUrl =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -36,18 +38,21 @@ public class RagFlowService
     };
 
     public RagFlowService(HttpClient http, ILogger<RagFlowService> log, IConfiguration config,
-        IHttpClientFactory factory, IMemoryCache cache, ConversationStore store)
+        IHttpClientFactory factory, IMemoryCache cache, ConversationStore store,
+        HybridRetriever retriever)
     {
         _http = http;
         _log = log;
         _factory = factory;
         _cache = cache;
         _store = store;
+        _retriever = retriever;
         _apiKey = config["RagFlow:ApiKey"]!;
         _embeddingModel = config["RagFlow:EmbeddingModel"] ?? "bge-m3@Ollama";
         _llmId = config["RagFlow:LlmId"] ?? "gemini-2.5-flash@Gemini";
         _geminiApiKey = config["Gemini:ApiKey"] ?? "";
         _defaultDatasetId = config["RagFlow:DatasetId"] ?? "";
+        _bm25Weight = double.TryParse(config["Retrieval:Bm25Weight"], out var w) ? w : 0.3;
     }
 
     private HttpRequestMessage NewRequest(HttpMethod method, string url)
@@ -224,13 +229,18 @@ public class RagFlowService
 
     // ── 7. Ask a question (retrieval + direct Gemini, bypasses RagFlow LLM) ──────
     public async Task<string> AskQuestionAsync(
-        string assistantId, string sessionId, string question)
+        string assistantId, string sessionId, string question,
+        IReadOnlyList<string>? allowedCategories = null)
     {
         // 1. Resolve dataset ID from the assistant config
         var datasetId = await GetAssistantDatasetIdAsync(assistantId);
 
-        // 2. Retrieve relevant chunks from RagFlow (no LLM involved)
-        var chunks = await RetrieveChunksAsync(datasetId, question);
+        // 2. Retrieve relevant chunks via our own hybrid retriever (BM25 + vector)
+        //    allowedCategories=null means admin (no restriction); a list enforces department isolation.
+        var chunks = await _retriever.RetrieveAsync(
+            datasetId, question,
+            bm25Weight: _bm25Weight,
+            allowedCategories: allowedCategories);
 
         // 3. Generate answer by calling Gemini directly
         var contexts = chunks.Select(c => c.Content).ToList();
@@ -299,7 +309,7 @@ public class RagFlowService
         return [];
     }
 
-    private async Task<string> CallGeminiForAnswerAsync(string question, List<string> contexts)
+    public async Task<string> CallGeminiForAnswerAsync(string question, List<string> contexts)
     {
         var contextBlock = contexts.Count > 0
             ? string.Join("\n\n", contexts.Select((c, i) => $"[ID:{i}] {c}"))

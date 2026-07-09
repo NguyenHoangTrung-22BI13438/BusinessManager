@@ -47,6 +47,16 @@
         <div style="display:flex; gap:8px; align-items:center;">
             <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
                   id="docsUploadForm" class="docs-upload-form">
+                <input type="text" id="uploadCategory" name="category"
+                       list="categoryList" placeholder="Category (e.g. HR)"
+                       style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); font-size:0.85rem; width:160px;" />
+                <datalist id="categoryList">
+                    <option value="General" />
+                    @foreach (var cat in Model.KnownCategories)
+                    {
+                        <option value="@cat" />
+                    }
+                </datalist>
                 <label for="docsUpload" class="btn btn--primary" id="docsUploadLabel">+ Upload files</label>
                 <input type="file" id="docsUpload" name="files" multiple
                        accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.md,.png,.jpg,.jpeg"
@@ -87,6 +97,7 @@
                         </th>
                         <th><a href="@SortHref("name")" class="crumb-link">Name@(SortArrow("name"))</a></th>
                         <th><a href="@SortHref("size")" class="crumb-link">Size@(SortArrow("size"))</a></th>
+                        <th>Category</th>
                         <th><a href="@SortHref("status")" class="crumb-link">Status@(SortArrow("status"))</a></th>
                         <th><a href="@SortHref("chunks")" class="crumb-link">Chunks@(SortArrow("chunks"))</a></th>
                         <th><a href="@SortHref("uploaded")" class="crumb-link">Uploaded@(SortArrow("uploaded"))</a></th>
@@ -112,6 +123,7 @@
                                 }
                             </td>
                             <td>@FormatSize(d.Size)</td>
+                            <td><span class="category-tag">@d.Category</span></td>
                             <td>
                                 <span class="status-badge status-@d.RunStatus.ToLower()">
                                     @d.RunStatus

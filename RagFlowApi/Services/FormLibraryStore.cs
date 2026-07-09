@@ -1,134 +1,115 @@
-using System.Text.Json;
+using Dapper;
 using RagFlowApi.Models;
+using System.Text.Json;
 
 namespace RagFlowApi.Services;
 
 public class FormLibraryStore
 {
-    private readonly string _metaPath;
-    private readonly string _bytesDir;
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly AppDbContext _db;
     private readonly ILogger<FormLibraryStore> _log;
 
     private static readonly JsonSerializerOptions _opts = new()
     {
-        WriteIndented = true,
+        WriteIndented = false,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public FormLibraryStore(IWebHostEnvironment env, ILogger<FormLibraryStore> log)
+    public FormLibraryStore(AppDbContext db, ILogger<FormLibraryStore> log)
     {
+        _db = db;
         _log = log;
-        _metaPath = Path.Combine(env.ContentRootPath, "form_library.json");
-        _bytesDir = Path.Combine(env.ContentRootPath, "form-library");
-        Directory.CreateDirectory(_bytesDir);
-        if (!File.Exists(_metaPath))
-            File.WriteAllText(_metaPath, "[]");
     }
 
     public async Task<List<FormTemplate>> GetAllAsync()
     {
-        await _lock.WaitAsync();
-        try { return await ReadAsync(); }
-        finally { _lock.Release(); }
+        try
+        {
+            await using var conn = _db.CreateConnection();
+            var rows = await conn.QueryAsync<TemplateRow>(
+                "SELECT id, name, file_name, uploaded_by, fields_json, created_at FROM form_templates ORDER BY created_at DESC");
+            return rows.Select(ToTemplate).ToList();
+        }
+        catch (Exception ex) { _log.LogError(ex, "GetAllAsync failed"); return []; }
     }
 
     public async Task<FormTemplate?> GetByIdAsync(string id)
     {
-        await _lock.WaitAsync();
         try
         {
-            var all = await ReadAsync();
-            return all.FirstOrDefault(t => t.Id == id);
+            await using var conn = _db.CreateConnection();
+            var row = await conn.QueryFirstOrDefaultAsync<TemplateRow>(
+                "SELECT id, name, file_name, uploaded_by, fields_json, created_at FROM form_templates WHERE id = @id",
+                new { id });
+            return row is null ? null : ToTemplate(row);
         }
-        finally { _lock.Release(); }
+        catch (Exception ex) { _log.LogError(ex, "GetByIdAsync failed"); return null; }
     }
 
     public async Task<string> AddAsync(
         string name, string fileName, byte[] bytes,
         List<FormField> fields, string uploadedBy)
     {
-        await _lock.WaitAsync();
-        try
-        {
-            var template = new FormTemplate
-            {
-                Name       = name,
-                FileName   = fileName,
-                UploadedBy = uploadedBy,
-                Fields     = fields
-            };
+        var id         = Guid.NewGuid().ToString("N");
+        var fieldsJson = JsonSerializer.Serialize(fields, _opts);
 
-            var ext = Path.GetExtension(fileName).ToLowerInvariant();
-            await File.WriteAllBytesAsync(
-                Path.Combine(_bytesDir, $"{template.Id}{ext}"), bytes);
+        await using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync(@"
+            INSERT INTO form_templates
+                (id, name, file_name, uploaded_by, fields_json, docx_data, created_at)
+            VALUES
+                (@id, @name, @fileName, @uploadedBy, @fieldsJson, @bytes, UTC_TIMESTAMP())",
+            new { id, name, fileName, uploadedBy, fieldsJson, bytes });
 
-            var all = await ReadAsync();
-            all.Add(template);
-            await WriteAsync(all);
-            return template.Id;
-        }
-        finally { _lock.Release(); }
+        return id;
     }
 
     public async Task DeleteAsync(string id)
     {
-        await _lock.WaitAsync();
-        try
-        {
-            var all = await ReadAsync();
-            var entry = all.FirstOrDefault(t => t.Id == id);
-            if (entry is null) return;
-
-            all.Remove(entry);
-            await WriteAsync(all);
-
-            foreach (var ext in new[] { ".docx", ".txt" })
-            {
-                var p = Path.Combine(_bytesDir, $"{id}{ext}");
-                if (File.Exists(p)) File.Delete(p);
-            }
-        }
-        finally { _lock.Release(); }
+        await using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync("DELETE FROM form_templates WHERE id = @id", new { id });
     }
 
     public byte[]? GetBytes(string id)
     {
-        foreach (var ext in new[] { ".docx", ".txt" })
-        {
-            var p = Path.Combine(_bytesDir, $"{id}{ext}");
-            if (File.Exists(p)) return File.ReadAllBytes(p);
-        }
-        return null;
+        using var conn = _db.CreateConnection();
+        conn.Open();
+        return conn.QueryFirstOrDefault<byte[]?>(
+            "SELECT docx_data FROM form_templates WHERE id = @id", new { id });
     }
 
     public string? GetFileName(string id)
     {
-        foreach (var ext in new[] { ".docx", ".txt" })
-        {
-            if (File.Exists(Path.Combine(_bytesDir, $"{id}{ext}")))
-                return $"{id}{ext}";
-        }
-        return null;
+        using var conn = _db.CreateConnection();
+        conn.Open();
+        return conn.QueryFirstOrDefault<string?>(
+            "SELECT file_name FROM form_templates WHERE id = @id", new { id });
     }
 
-    private async Task<List<FormTemplate>> ReadAsync()
+    private static FormTemplate ToTemplate(TemplateRow r)
     {
-        try
+        var fields = string.IsNullOrEmpty(r.fields_json)
+            ? (List<FormField>)[]
+            : JsonSerializer.Deserialize<List<FormField>>(r.fields_json, _opts) ?? [];
+
+        return new FormTemplate
         {
-            var json = await File.ReadAllTextAsync(_metaPath);
-            return JsonSerializer.Deserialize<List<FormTemplate>>(json, _opts) ?? [];
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "Failed to read form_library.json");
-            return [];
-        }
+            Id         = r.id,
+            Name       = r.name,
+            FileName   = r.file_name,
+            UploadedBy = r.uploaded_by,
+            UploadedAt = r.created_at,
+            Fields     = fields
+        };
     }
 
-    private async Task WriteAsync(List<FormTemplate> data)
+    private sealed class TemplateRow
     {
-        await File.WriteAllTextAsync(
-            _metaPath, JsonSerializer.Serialize(data, _opts));
+        public string   id          { get; set; } = "";
+        public string   name        { get; set; } = "";
+        public string   file_name   { get; set; } = "";
+        public string   uploaded_by { get; set; } = "";
+        public string?  fields_json { get; set; }
+        public DateTime created_at  { get; set; }
     }
 }

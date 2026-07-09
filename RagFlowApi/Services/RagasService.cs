@@ -138,7 +138,7 @@ public class RagasService
             generationConfig = new
             {
                 temperature = 0.0,   // deterministic for eval
-                maxOutputTokens = 512
+                maxOutputTokens = 2048
             }
         };
 

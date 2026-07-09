@@ -1,47 +1,50 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using RagFlowApi.Models;
 using RagFlowApi.Services;
-using UglyToad.PdfPig.Logging;
 
 namespace RagFlowApi.Pages;
 
 [Authorize]
 public class DocumentsModel : PageModel
 {
-    private readonly RagFlowService    _svc;
-    private readonly IngestionChannel  _channel;
-    private readonly IngestionJobStore _store;
-    private readonly IngestionPipeline _pipeline;
-    private readonly ReparseChannel    _reparseChannel;
+    private readonly VectorChunkStore   _vectorStore;
+    private readonly IngestionChannel   _channel;
+    private readonly IngestionJobStore  _store;
+    private readonly IngestionPipeline  _pipeline;
+    private readonly ReparseChannel     _reparseChannel;
     private readonly ILogger<DocumentsModel> _log;
-    private readonly UserContext _userContext;
+    private readonly UserContext        _userContext;
     private readonly PendingDocumentStore _pending;
+    private readonly IWebHostEnvironment _env;
 
-    public List<DocumentItem> Documents { get; private set; } = [];
-    public List<PendingDocument> PendingDocuments { get; private set; } = []; // add
+    public List<DocumentItem>    Documents        { get; private set; } = [];
+    public List<PendingDocument> PendingDocuments { get; private set; } = [];
+    public List<string>          KnownCategories  { get; private set; } = [];
     public string CurrentSort { get; private set; } = "name";
     public string CurrentDir  { get; private set; } = "asc";
 
     public DocumentsModel(
-    RagFlowService svc,
-    IngestionChannel channel,
-    IngestionJobStore store,
-    UserContext userContext,
-    IngestionPipeline pipeline,
-    ReparseChannel reparseChannel,
-    PendingDocumentStore pending,                 // ← add this
-    ILogger<DocumentsModel> log)
+        VectorChunkStore vectorStore,
+        IngestionChannel channel,
+        IngestionJobStore store,
+        UserContext userContext,
+        IngestionPipeline pipeline,
+        ReparseChannel reparseChannel,
+        PendingDocumentStore pending,
+        IWebHostEnvironment env,
+        ILogger<DocumentsModel> log)
     {
-        _svc = svc;
-        _channel = channel;
-        _store = store;
-        _userContext = userContext;
-        _pipeline = pipeline;
+        _vectorStore    = vectorStore;
+        _channel        = channel;
+        _store          = store;
+        _userContext    = userContext;
+        _pipeline       = pipeline;
         _reparseChannel = reparseChannel;
-        _pending = pending;                       // ← add this
-        _log = log;
+        _pending        = pending;
+        _env            = env;
+        _log            = log;
     }
 
     public async Task OnGetAsync(string? sort, string? dir)
@@ -52,8 +55,23 @@ public class DocumentsModel : PageModel
         if (User.IsInRole("admin"))
         {
             var datasetId = await _userContext.EnsureDatasetAsync();
-            Documents = SortDocuments(
-                await _svc.ListDocumentsAsync(datasetId), CurrentSort, CurrentDir);
+            var chunks = await _vectorStore.GetByDatasetAsync(datasetId);
+            var docs = chunks
+                .GroupBy(c => c.DocumentId)
+                .Select(g => new DocumentItem(
+                    Id:         g.Key,
+                    Name:       g.First().DocumentName,
+                    Size:       0,
+                    Type:       "",
+                    RunStatus:  "DONE",
+                    ChunkCount: g.Count(),
+                    TokenCount: 0,
+                    Progress:   1.0,
+                    CreateTime: 0,
+                    Category:   g.First().Category))
+                .ToList();
+            Documents       = SortDocuments(docs, CurrentSort, CurrentDir);
+            KnownCategories = await _vectorStore.GetCategoriesAsync();
         }
         else
         {
@@ -80,9 +98,14 @@ public class DocumentsModel : PageModel
         if (!User.IsInRole("admin")) return Forbid();
         if (documentIds is { Count: > 0 })
         {
-            var datasetId = await _userContext.EnsureDatasetAsync();
-            try { await _svc.DeleteDocumentsAsync(datasetId, [.. documentIds]); }
-            catch { }
+            var cacheDir = Path.Combine(_env.WebRootPath, "doc-cache");
+            foreach (var docId in documentIds)
+            {
+                try { await _vectorStore.DeleteByDocumentAsync(docId); } catch { }
+                if (Directory.Exists(cacheDir))
+                    foreach (var f in Directory.GetFiles(cacheDir, docId + ".*"))
+                        try { System.IO.File.Delete(f); } catch { }
+            }
         }
         return RedirectToPage();
     }
@@ -96,11 +119,6 @@ public class DocumentsModel : PageModel
         return RedirectToPage();
     }
 
-    // Queues each selected document onto the single-consumer reparse worker
-    // instead of reparsing inline — keeps the OCR backend processing one
-    // document at a time and lets the client poll progress per file, the
-    // same way /Documents?handler=Upload already does.
-    // Returns JSON { "jobs": [{ "jobId": "...", "fileName": "..." }] }
     public async Task<IActionResult> OnPostBatchReparseAsync(
         List<string> documentIds, List<string> fileNames)
     {
@@ -127,14 +145,13 @@ public class DocumentsModel : PageModel
         return new JsonResult(new { jobs });
     }
 
-    // Returns JSON { "jobs": [{ "jobId": "...", "fileName": "..." }] }
-    // so the client can start polling without waiting for OCR.
-    public async Task<IActionResult> OnPostUploadAsync(List<IFormFile> files)
+    public async Task<IActionResult> OnPostUploadAsync(List<IFormFile> files, string? category)
     {
         if (files is null || files.Count == 0)
             return new JsonResult(new { jobs = Array.Empty<object>() });
 
-        // ── Non-admin: route to pending store ────────────────────────────────────
+        var cat = string.IsNullOrWhiteSpace(category) ? "General" : category.Trim();
+
         if (!User.IsInRole("admin"))
         {
             var submitted = new List<object>();
@@ -146,7 +163,6 @@ public class DocumentsModel : PageModel
             return new JsonResult(new { jobs = Array.Empty<object>(), pending = submitted });
         }
 
-        // ── Admin: straight into the ingestion queue ──────────────────────────────
         var datasetId = await _userContext.EnsureDatasetAsync();
         var jobs = new List<object>();
         foreach (var f in files.Where(f => f.Length > 0))
@@ -156,7 +172,7 @@ public class DocumentsModel : PageModel
             var jobId = Guid.NewGuid().ToString("N");
             var ct = f.ContentType ?? "application/octet-stream";
             _store.Add(new JobStatus { JobId = jobId, FileName = f.FileName });
-            var job = new IngestionJob(jobId, datasetId, ms.ToArray(), f.FileName, ct);
+            var job = new IngestionJob(jobId, datasetId, ms.ToArray(), f.FileName, ct, cat);
             if (!_channel.Writer.TryWrite(job)) await _channel.Writer.WriteAsync(job);
             jobs.Add(new { jobId, fileName = f.FileName });
         }

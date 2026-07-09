@@ -12,6 +12,7 @@ namespace RagFlowApi.Pages;
 public class AskModel : PageModel
 {
     private readonly RagFlowService    _svc;
+    private readonly ConversationStore _conversations;
     private readonly IngestionChannel  _channel;
     private readonly IngestionJobStore _store;
     private readonly UserContext       _userContext;
@@ -27,23 +28,24 @@ public class AskModel : PageModel
     public string                   PendingJobsJson { get; private set; } = "[]";
     public Dictionary<string, bool> Ratings         { get; private set; } = [];
 
-    public AskModel(RagFlowService svc, IngestionChannel channel,
-                    IngestionJobStore store, UserContext userContext,
-                    IMemoryCache cache, RatingStore ratings)
+    public AskModel(RagFlowService svc, ConversationStore conversations,
+                    IngestionChannel channel, IngestionJobStore store,
+                    UserContext userContext, IMemoryCache cache, RatingStore ratings)
     {
-        _svc = svc; _channel = channel; _store = store;
+        _svc = svc; _conversations = conversations;
+        _channel = channel; _store = store;
         _userContext = userContext; _cache = cache; _ratings = ratings;
     }
 
     public async Task OnGetAsync(string? sessionId = null)
     {
-        var assistantId = await _userContext.EnsureAssistantAsync();
-        Sessions = await _svc.ListSessionsAsync(assistantId);
+        var username = User.Identity?.Name ?? "";
+        Sessions = await _conversations.ListByUsernameAsync(username);
         SessionId = sessionId;
         SessionName = Sessions.FirstOrDefault(s => s.Id == sessionId)?.Name;
         if (sessionId != null)
         {
-            Messages = CollapseRegenerations(await _svc.GetMessagesAsync(assistantId, sessionId));
+            Messages = CollapseRegenerations(await _conversations.LoadAsync(sessionId) ?? []);
             ApplyCachedChunks(sessionId);
             await LoadRatingsAsync(sessionId);
         }
@@ -51,23 +53,19 @@ public class AskModel : PageModel
 
     public async Task<IActionResult> OnPostCreateAsync(string? sessionName)
     {
-        var assistantId = await _userContext.EnsureAssistantAsync();
+        var username = User.Identity?.Name ?? "";
         var name = string.IsNullOrWhiteSpace(sessionName)
             ? $"Chat {DateTime.Now:MMM d, HH:mm}" : sessionName;
-        var id = await _svc.CreateSessionAsync(assistantId, name);
+        var id = await _conversations.CreateSessionAsync(username, name);
         return RedirectToPage(new { sessionId = id });
     }
 
     public async Task<IActionResult> OnPostDeleteAsync(string sessionId)
     {
-        var assistantId = await _userContext.EnsureAssistantAsync();
-        await _svc.DeleteSessionAsync(assistantId, sessionId);
+        await _conversations.DeleteSessionAsync(sessionId);
         return RedirectToPage();
     }
 
-    /// <summary>
-    /// Renames a chat session. Called via fetch (returns JSON, not a page).
-    /// </summary>
     public async Task<IActionResult> OnPostRenameAsync(string sessionId, string newName)
     {
         if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(newName))
@@ -79,8 +77,7 @@ public class AskModel : PageModel
 
         try
         {
-            var assistantId = await _userContext.EnsureAssistantAsync();
-            await _svc.RenameSessionAsync(assistantId, sessionId, newName);
+            await _conversations.RenameSessionAsync(sessionId, newName);
             return new JsonResult(new { ok = true, name = newName });
         }
         catch (Exception ex)
@@ -93,7 +90,8 @@ public class AskModel : PageModel
     public async Task OnPostAskAsync(string sessionId, string? question, List<IFormFile>? files)
     {
         var assistantId = await _userContext.EnsureAssistantAsync();
-        Sessions = await _svc.ListSessionsAsync(assistantId);
+        var username = User.Identity?.Name ?? "";
+        Sessions = await _conversations.ListByUsernameAsync(username);
         SessionId = sessionId;
         SessionName = Sessions.FirstOrDefault(s => s.Id == sessionId)?.Name;
 
@@ -106,17 +104,18 @@ public class AskModel : PageModel
         if (!hasQ && count == 0)
         {
             ErrorMessage = "Please enter a question or attach at least one file.";
-            Messages = await _svc.GetMessagesAsync(assistantId, sessionId);
+            Messages = await _conversations.LoadAsync(sessionId) ?? [];
             return;
         }
 
         if (hasQ)
         {
+            var allowedCategories = await _userContext.GetAllowedCategoriesAsync();
             string completionJson = "";
-            try { completionJson = await _svc.AskQuestionAsync(assistantId, sessionId, question!); }
+            try { completionJson = await _svc.AskQuestionAsync(assistantId, sessionId, question!, allowedCategories); }
             catch (Exception ex) { ErrorMessage = $"Something went wrong: {ex.Message}"; }
 
-            Messages = await _svc.GetMessagesAsync(assistantId, sessionId);
+            Messages = await _conversations.LoadAsync(sessionId) ?? [];
 
             if (!string.IsNullOrEmpty(completionJson) && Messages.Count > 0)
             {
@@ -134,7 +133,7 @@ public class AskModel : PageModel
         }
         else
         {
-            Messages = await _svc.GetMessagesAsync(assistantId, sessionId);
+            Messages = await _conversations.LoadAsync(sessionId) ?? [];
         }
 
         ApplyCachedChunks(sessionId);
@@ -144,11 +143,12 @@ public class AskModel : PageModel
     public async Task OnPostRegenerateAsync(string sessionId)
     {
         var assistantId = await _userContext.EnsureAssistantAsync();
-        Sessions = await _svc.ListSessionsAsync(assistantId);
+        var username = User.Identity?.Name ?? "";
+        Sessions = await _conversations.ListByUsernameAsync(username);
         SessionId = sessionId;
         SessionName = Sessions.FirstOrDefault(s => s.Id == sessionId)?.Name;
 
-        var history = await _svc.GetMessagesAsync(assistantId, sessionId);
+        var history = await _conversations.LoadAsync(sessionId) ?? [];
         var lastUser = history.LastOrDefault(m => m.Role == "user");
 
         if (lastUser is null)
@@ -158,11 +158,12 @@ public class AskModel : PageModel
             return;
         }
 
+        var allowedCategories = await _userContext.GetAllowedCategoriesAsync();
         string completionJson = "";
-        try { completionJson = await _svc.AskQuestionAsync(assistantId, sessionId, lastUser.Content); }
+        try { completionJson = await _svc.AskQuestionAsync(assistantId, sessionId, lastUser.Content, allowedCategories); }
         catch (Exception ex) { ErrorMessage = $"Regeneration failed: {ex.Message}"; }
 
-        Messages = CollapseRegenerations(await _svc.GetMessagesAsync(assistantId, sessionId));
+        Messages = CollapseRegenerations(await _conversations.LoadAsync(sessionId) ?? []);
 
         if (!string.IsNullOrEmpty(completionJson) && Messages.Count > 0)
         {

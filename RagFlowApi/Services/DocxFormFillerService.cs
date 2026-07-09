@@ -2,6 +2,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using RagFlowApi.Models;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -23,6 +24,8 @@ public class DocxFormFillerService
     private static readonly Regex HasDotsRx       = new(@"[\.…]{4,}", RegexOptions.Compiled);
     // "Label:" at end of accumulated paragraph text
     private static readonly Regex LabelColonRx    = new(@"([^:：\r\n]{2,60})[：:]\s*$", RegexOptions.Compiled);
+    // Same but allows trailing dots/ellipsis after the colon (for split-run patterns where prior run had unfilled dots)
+    private static readonly Regex LabelColonWithDotsRx = new(@"([^:：\r\n]{2,60})[：:][\.…\s]*$", RegexOptions.Compiled);
     // "Label: ……" in the same text run — matches 1+ dots/ellipsis containing at least one …
     // The lookahead (?=[\.…]*…) ensures we don't match ASCII-period-only sequences like "v.v."
     private static readonly Regex InlineRx        = new(@"([^:：]{2,60})[：:]\s*((?=[\.…]*…)[\.…]+)", RegexOptions.Compiled);
@@ -211,12 +214,15 @@ public class DocxFormFillerService
         if (fields.Count == 0) return fields;
 
         // Step 1 — Fill from the user's saved profile (instant, no network call).
+        // Both field keys and dictionary keys are ASCII-normalized so Vietnamese
+        // diacritics in labels (e.g. "họ_và_tên") match plain keys ("ho_va_ten").
         var record        = await _userContext.GetRecordAsync();
         var profileValues = BuildProfileValues(record);
 
         var result = fields.Select(f =>
         {
-            if (profileValues.TryGetValue(f.Key, out var pv) && !string.IsNullOrWhiteSpace(pv))
+            var lookupKey = AsciiKey(f.Key);
+            if (profileValues.TryGetValue(lookupKey, out var pv) && !string.IsNullOrWhiteSpace(pv))
                 return f with { SuggestedValue = pv, Source = "profile" };
 
             // Preserve any value already carried in (e.g., loaded from the form library).
@@ -273,7 +279,7 @@ public class DocxFormFillerService
         return result;
     }
 
-    // ── Build a lookup from slugified field keys → user profile values ────────
+    // ── Build a lookup from ASCII-normalized field keys → user profile values ──
     private static Dictionary<string, string> BuildProfileValues(UserRecord user)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -281,13 +287,14 @@ public class DocxFormFillerService
         void Set(string value, params string[] keys)
         {
             if (string.IsNullOrWhiteSpace(value)) return;
-            foreach (var k in keys) map[k] = value;
+            foreach (var k in keys) map[AsciiKey(k)] = value;  // normalize at insert too
         }
 
         Set(user.FullName,
             "ho_va_ten", "ho_ten", "ten", "full_name", "name",
             "nguoi_lao_dong", "ho_va_ten_nguoi_lao_dong", "hovaten",
-            "ho_va_ten_nguoi_duoc_dao_tao", "nguoi_duoc_dao_tao");
+            "ho_va_ten_nguoi_duoc_dao_tao", "nguoi_duoc_dao_tao",
+            "ten_toi_la", "ho_va_ten_nguoi_cam_ket", "ho_ten_nguoi_cam_ket");
 
         Set(user.DateOfBirth,
             "ngay_sinh", "ngay_thang_nam_sinh", "sinh_ngay",
@@ -303,7 +310,8 @@ public class DocxFormFillerService
             "so_cmnd", "so_cccd", "cmnd", "cccd",
             "can_cuoc", "id_number", "so_chung_minh_nhan_dan",
             "so_chung_minh", "so_cmndcccd", "cmndcccd",
-            "so_giay_to", "giay_to_tuy_than");
+            "so_giay_to", "giay_to_tuy_than",
+            "so_cmnd_ho_chieu", "cmnd_ho_chieu", "ho_chieu", "so_ho_chieu");
 
         Set(user.IdIssuedDate,
             "ngay_cap", "cap_ngay", "issued_date", "ngay_cap_cmnd", "ngay_cap_cccd");
@@ -313,7 +321,9 @@ public class DocxFormFillerService
 
         Set(user.JobTitle,
             "chuc_vu", "chuc_danh", "vi_tri", "role",
-            "job_title", "position", "nghe_nghiep", "nghe_nghiep_hien_tai");
+            "job_title", "position", "nghe_nghiep", "nghe_nghiep_hien_tai",
+            "hien_dang_cong_tac_tai_vi_tri", "vi_tri_cong_tac",
+            "chuc_vu_hien_tai", "nghe_nghiep_hien_nay");
 
         Set(user.Department,
             "phong_ban", "don_vi", "department", "to_chuc", "co_quan",
@@ -329,7 +339,9 @@ public class DocxFormFillerService
         Set(user.Address,
             "dia_chi", "noi_o", "noi_cu_tru", "address",
             "dia_chi_thuong_tru", "dia_chi_lien_lac", "dia_chi_hien_tai",
-            "dia_chi_noi_o", "ho_khau_thuong_tru");
+            "dia_chi_noi_o", "ho_khau_thuong_tru",
+            "cho_o_hien_nay", "noi_o_hien_nay", "dia_chi_hien_nay",
+            "dia_chi_cu_tru_hien_tai");
 
         return map;
     }
@@ -678,7 +690,8 @@ public class DocxFormFillerService
                 if (colonPos >= 0)
                 {
                     var afterColon = text[(colonPos + 1)..];
-                    if (string.IsNullOrWhiteSpace(afterColon))   // colon at end (or trailing spaces)
+                    // colon at end (trailing spaces) OR followed by ASCII-only dot-run (e.g. "cấp ngày:.....")
+                    if (string.IsNullOrWhiteSpace(afterColon) || Regex.IsMatch(afterColon, @"^\.{4,}$"))
                     {
                         var labelArea = accumulated.ToString() + text[..colonPos];
                         var lm = LabelColonRx.Match(labelArea + ":");
@@ -777,7 +790,7 @@ public class DocxFormFillerService
                             : m.Value;
                     });
                     accumulated.Append(textEl.Text);
-                    justFilledDots = false;
+                    justFilledDots = textEl.Text != text;   // clear subsequent dot-only runs if we actually filled
                     continue;
                 }
 
@@ -791,8 +804,8 @@ public class DocxFormFillerService
                     var accStr = accumulated.ToString();
                     string? key = null;
 
-                    // Try colon-based lookup first
-                    var lm = LabelColonRx.Match(accStr);
+                    // Try colon-based lookup first (allow trailing dots from a prior unfilled inline run)
+                    var lm = LabelColonWithDotsRx.Match(accStr);
                     if (lm.Success)
                         key = Slugify(CleanLabel(lm.Groups[1].Value));
 
@@ -845,7 +858,7 @@ public class DocxFormFillerService
                             {
                                 textEl.Text = em.Groups[1].Value + em.Groups[2].Value + " " + val;
                                 accumulated.Append(textEl.Text);
-                                justFilledDots = false;
+                                justFilledDots = true;   // clear trailing dot runs for this field
                                 anyFillDone    = true;
                                 continue;
                             }
@@ -997,6 +1010,21 @@ public class DocxFormFillerService
         var step1 = Regex.Replace(s.ToLowerInvariant().Trim(), @"\s+", "_");
         var step2 = Regex.Replace(step1, @"[^\p{L}\p{N}_]+", "");
         return step2.Trim('_');
+    }
+
+    // Strips Vietnamese (and any other) diacritics and keeps only a-z 0-9 _.
+    // Used so profile keys like "ho_va_ten" match form keys like "họ_và_tên".
+    private static string AsciiKey(string s)
+    {
+        // 'đ'/'Đ' doesn't decompose under FormD, handle it explicitly.
+        s = s.Replace("đ", "d", StringComparison.OrdinalIgnoreCase);
+        var formD = s.Normalize(NormalizationForm.FormD);
+        var sb    = new StringBuilder(formD.Length);
+        foreach (var c in formD)
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        // Strip anything that isn't ASCII letter, digit, or underscore
+        return Regex.Replace(sb.ToString(), @"[^a-z0-9_]+", "");
     }
 
     // ── Plain-text detect ─────────────────────────────────────────────────────

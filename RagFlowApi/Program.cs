@@ -1,3 +1,4 @@
+using Dapper;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -9,10 +10,26 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── MySQL database ────────────────────────────────────────────────────────────
+var mysqlConnStr = builder.Configuration.GetConnectionString("Default")
+    ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
+var dbContext = new RagFlowApi.Services.AppDbContext(mysqlConnStr);
+builder.Services.AddSingleton(dbContext);
+
 builder.Services.AddHttpClient<DotsOcrClient>();
 builder.Services.AddHttpClient<PaddleOcrClient>();
+builder.Services.AddHttpClient<OllamaEmbeddingClient>(client =>
+{
+    var baseUrl = builder.Configuration["Embedding:BaseUrl"] ?? "http://100.115.132.106:1234";
+    client.BaseAddress = new Uri(baseUrl);
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
 builder.Services.AddScoped<IParser, DotsOcrParser>();
 builder.Services.AddSingleton<LayoutChunker>();
+builder.Services.AddSingleton<VectorChunkStore>();
+builder.Services.AddSingleton<BM25Scorer>();
+builder.Services.AddScoped<HybridRetriever>();
 builder.Services.AddScoped<IngestionPipeline>();
 builder.Services.AddScoped<RagasService>();
 builder.Services.AddSingleton<UserStore>();
@@ -24,6 +41,10 @@ builder.Services.AddSingleton<FormTemplateCache>();
 builder.Services.AddSingleton<FormLibraryStore>();
 builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddScoped<DocxFormFillerService>();
+builder.Services.AddScoped<BenchmarkService>();
+
+// ── Startup migration: embed existing RagFlow chunks into local vector store ──
+builder.Services.AddHostedService<VectorStoreMigrationService>();
 
 // ── Async ingestion queue ─────────────────────────────────────────────────────
 builder.Services.AddSingleton<IngestionChannel>();

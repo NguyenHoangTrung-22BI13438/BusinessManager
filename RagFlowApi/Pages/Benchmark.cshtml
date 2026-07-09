@@ -1,0 +1,734 @@
+@page
+@model RagFlowApi.Pages.BenchmarkModel
+@using System.Text.Json
+@using RagFlowApi.Models
+@{
+    ViewData["Title"] = "Benchmark";
+    Layout = "_Layout";
+
+    var sweepJson = JsonSerializer.Serialize(Model.SweepResult?.Rows ?? new List<RagFlowApi.Models.WeightSweepRow>());
+    var chunkJson = JsonSerializer.Serialize(Model.ChunkResult is { Error: null } cr2 ? new[] { cr2.Layout, cr2.Naive } : null);
+    var ocrJson   = JsonSerializer.Serialize(Model.OcrResult  is { Error: null } ? Model.OcrResult : null);
+    var scaleJson = JsonSerializer.Serialize(Model.Scale);
+}
+
+<style>
+.bench-shell {
+    flex: 1; overflow-y: auto; padding: 32px 40px 64px;
+    background: var(--bg); color: var(--text-primary); font-family: var(--font);
+}
+
+/* ── Header ─────────────────────────────────────────────────────── */
+.bench-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.bench-back {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+    border-radius: var(--radius-sm); background: var(--bg-card); border: 1px solid var(--border);
+    color: var(--text-muted); font-size: 13px; font-weight: 500; text-decoration: none;
+    transition: background .15s, color .15s; white-space: nowrap; flex-shrink: 0; margin-top: 3px;
+}
+.bench-back:hover { background: var(--bg-input); color: var(--text-primary); }
+.bench-title-wrap { flex: 1; min-width: 0; }
+.bench-title { font-size: 22px; font-weight: 600; color: var(--text-primary); margin: 0; }
+.bench-subtitle { font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.bench-header-actions { display: flex; gap: 8px; flex-shrink: 0; margin-top: 3px; }
+
+/* ── Scale bar ─────────────────────────────────────────────────── */
+.scale-bar {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 1px; background: var(--border); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; margin-bottom: 20px;
+}
+.scale-stat { background: var(--bg-card); padding: 14px 18px; display: flex; flex-direction: column; gap: 3px; }
+.scale-stat-val { font-size: 20px; font-weight: 700; font-family: var(--font-mono); color: var(--accent); line-height: 1.1; }
+.scale-stat-lbl { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+
+/* ── Section cards ─────────────────────────────────────────────── */
+.bench-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+.bench-section-hd { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid var(--border); background: var(--bg-input); }
+.bench-section-hd h2 { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0; }
+.bench-section-hd-right { display: flex; align-items: center; gap: 10px; }
+.bench-section-tag { font-size: 11px; font-weight: 600; letter-spacing: .04em; background: rgba(79,110,247,.18); color: var(--accent); border-radius: 999px; padding: 2px 10px; }
+.bench-section-body { padding: 18px; }
+.bench-info { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px; }
+.bench-info code { font-family: var(--font-mono); font-size: 12px; background: var(--bg-input); border-radius: 4px; padding: 1px 5px; color: var(--text-primary); }
+
+/* ── Metric definition cards ───────────────────────────────────── */
+.metric-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px; margin-bottom: 20px;
+}
+.metric-card {
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px;
+    border-left: 3px solid var(--c);
+}
+.metric-card-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); display: inline-block; margin-right: 6px; }
+.metric-card-name { font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; display: flex; align-items: center; }
+.metric-card-trend { font-size: 11px; font-family: var(--font-mono); margin-bottom: 5px; }
+.metric-card-desc { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+.metric-card-val { font-size: 20px; font-weight: 700; font-family: var(--font-mono); margin-top: 8px; }
+
+/* ── Forms ─────────────────────────────────────────────────────── */
+.bench-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+@@media (max-width: 680px) { .bench-grid-2 { grid-template-columns: 1fr; } }
+.bench-field { display: flex; flex-direction: column; gap: 6px; }
+.bench-label { font-size: 12px; font-weight: 600; letter-spacing: .03em; color: var(--text-muted); }
+.bench-input, .bench-textarea {
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-primary); font-family: var(--font); font-size: 13px;
+    padding: 9px 12px; width: 100%; transition: border-color .15s; resize: vertical;
+}
+.bench-textarea { min-height: 100px; }
+.bench-input:focus, .bench-textarea:focus { outline: none; border-color: var(--border-focus); }
+.bench-input-sm { width: 90px; display: inline-block; }
+
+/* ── Buttons ───────────────────────────────────────────────────── */
+.bench-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 9px 20px;
+    background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
+    font-family: var(--font); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: background .15s, transform .1s;
+}
+.bench-btn:hover { background: var(--accent-hover); }
+.bench-btn:active { transform: scale(.98); }
+.bench-btn:disabled { opacity: .45; cursor: default; }
+.bench-btn--ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-weight: 500; }
+.bench-btn--ghost:hover { background: var(--bg-input); color: var(--text-primary); }
+
+/* ── Tables ────────────────────────────────────────────────────── */
+.bench-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.bench-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bench-table thead th {
+    background: var(--bg-input); border-bottom: 1px solid var(--border); padding: 9px 13px;
+    font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-muted); white-space: nowrap; text-align: left;
+}
+.bench-table tbody td { padding: 9px 13px; border-bottom: 1px solid var(--border); color: var(--text-primary); vertical-align: middle; }
+.bench-table tbody tr:last-child td { border-bottom: none; }
+.bench-table tbody tr:hover td { background: rgba(255,255,255,.02); }
+.bench-table tr.row-best td { background: rgba(79,110,247,.07); }
+
+/* ── Score chips ───────────────────────────────────────────────── */
+.score--high { background: rgba(45,212,160,.12); color: #2dd4a0; border-radius: 6px; padding: 2px 8px; font-weight: 700; font-family: var(--font-mono); font-size: 11px; }
+.score--mid  { background: rgba(245,166,35,.12);  color: #f5a623; border-radius: 6px; padding: 2px 8px; font-weight: 700; font-family: var(--font-mono); font-size: 11px; }
+.score--low  { background: rgba(247,111,111,.12); color: #f76f6f; border-radius: 6px; padding: 2px 8px; font-weight: 700; font-family: var(--font-mono); font-size: 11px; }
+.score--dash { color: var(--text-subtle); font-family: var(--font-mono); font-size: 11px; }
+
+/* ── Chart container ───────────────────────────────────────────── */
+.chart-wrap { margin-top: 18px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 18px; }
+.chart-title { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 14px; }
+.result-toolbar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; margin-bottom: 10px; }
+.result-toolbar-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+
+/* ── Error ─────────────────────────────────────────────────────── */
+.bench-error { background: rgba(247,111,111,.08); border: 1px solid rgba(247,111,111,.25); color: #f76f6f; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; margin-top: 12px; }
+
+/* ── Tools (collapsible) ───────────────────────────────────────── */
+.tool-details { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+.tool-details summary {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 18px; cursor: pointer; list-style: none;
+    background: var(--bg-input); font-size: 14px; font-weight: 600;
+    color: var(--text-primary); user-select: none;
+    border-bottom: 1px solid transparent; transition: border-color .15s;
+}
+.tool-details[open] summary { border-bottom-color: var(--border); }
+.tool-details summary::-webkit-details-marker { display: none; }
+.tool-details summary .tool-chevron { font-size: 10px; color: var(--text-muted); transition: transform .2s; }
+.tool-details[open] summary .tool-chevron { transform: rotate(90deg); }
+.tool-details-body { padding: 18px; }
+
+/* ── Overlap ───────────────────────────────────────────────────── */
+.overlap-summary { display: flex; align-items: center; gap: 20px; margin-top: 16px; flex-wrap: wrap; }
+.overlap-big { font-size: 40px; font-weight: 700; font-family: var(--font-mono); line-height: 1; }
+.overlap-details { flex: 1; min-width: 180px; }
+.overlap-bar-wrap { height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; margin-top: 6px; max-width: 320px; }
+.overlap-bar { height: 100%; background: var(--accent); border-radius: 4px; }
+.chunk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+@@media (max-width: 680px) { .chunk-grid { grid-template-columns: 1fr; } }
+.chunk-grid-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.chunk-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.chunk-badge { font-size: 11px; font-family: var(--font-mono); background: var(--bg-input); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; color: var(--text-muted); }
+.chunk-badge--match { background: rgba(45,212,160,.12); border-color: rgba(45,212,160,.3); color: #2dd4a0; font-weight: 600; }
+
+/* ── Chunking samples ──────────────────────────────────────────── */
+.sample-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+@@media (max-width: 680px) { .sample-grid { grid-template-columns: 1fr; } }
+.sample-block { display: flex; flex-direction: column; gap: 6px; }
+.sample-block-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+.sample-pre { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+
+/* ── OCR gauges ────────────────────────────────────────────────── */
+.ocr-gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+@@media (max-width: 600px) { .ocr-gauges { grid-template-columns: 1fr; } }
+.ocr-gauge-card { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; text-align: center; }
+.ocr-gauge-label { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+.ocr-gauge-val { font-size: 36px; font-weight: 700; font-family: var(--font-mono); line-height: 1; }
+.ocr-gauge-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.ocr-gauge-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 10px; }
+.ocr-gauge-bar { height: 100%; border-radius: 3px; }
+
+/* ── Section divider ───────────────────────────────────────────── */
+.bench-divider { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-subtle); margin: 28px 0 14px; display: flex; align-items: center; gap: 12px; }
+.bench-divider::before, .bench-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+</style>
+
+<div class="bench-shell">
+
+    @* ── Header ── *@
+    <div class="bench-header">
+        <a href="javascript:history.back()" class="bench-back">← Back</a>
+        <div class="bench-title-wrap">
+            <h1 class="bench-title">Benchmark</h1>
+            <p class="bench-subtitle">
+                Measure how BM25 vs Vector weight affects every retrieval metric —
+                precision, recall, F1, faithfulness, and answer relevancy.
+            </p>
+        </div>
+        <div class="bench-header-actions">
+            <button class="bench-btn bench-btn--ghost" onclick="downloadReport()">↓ Download Report</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="bench-error">@Model.ErrorMessage</div>
+    }
+
+    @* ── Scale bar ── *@
+    @if (Model.Scale is { } sc)
+    {
+        <div class="scale-bar">
+            <div class="scale-stat">
+                <span class="scale-stat-val">@sc.TotalChunks</span>
+                <span class="scale-stat-lbl">Chunks</span>
+            </div>
+            <div class="scale-stat">
+                <span class="scale-stat-val">@sc.UniqueDocuments</span>
+                <span class="scale-stat-lbl">Documents</span>
+            </div>
+            <div class="scale-stat">
+                <span class="scale-stat-val">@sc.UniqueDatasets</span>
+                <span class="scale-stat-lbl">Datasets</span>
+            </div>
+            <div class="scale-stat">
+                <span class="scale-stat-val">@sc.StoreSizeDisplay</span>
+                <span class="scale-stat-lbl">Vector Store</span>
+            </div>
+            <div class="scale-stat">
+                <span class="scale-stat-val">@sc.AvgCharsPerChunk.ToString("F0")</span>
+                <span class="scale-stat-lbl">Avg Chars/Chunk</span>
+            </div>
+            <div class="scale-stat">
+                <span class="scale-stat-val">~@sc.EstQueryMs ms</span>
+                <span class="scale-stat-lbl">Est. Latency</span>
+            </div>
+        </div>
+    }
+
+    @* ══ MAIN: BM25 vs Vector Trade-off ══════════════════════════════════════ *@
+    <div class="bench-section">
+        <div class="bench-section-hd">
+            <h2>BM25 vs Vector Weight Trade-off</h2>
+            <div class="bench-section-hd-right">
+                <span class="bench-section-tag">Defense Q8</span>
+            </div>
+        </div>
+        <div class="bench-section-body">
+
+            @* ── Metric explanation cards (always shown) ── *@
+            <div class="metric-grid">
+                @{
+                    var sr = Model.SweepResult;
+                    var bestRow = sr?.Rows.Where(r => r.AvgCombined >= 0).OrderByDescending(r => r.AvgCombined).FirstOrDefault();
+
+                    string MetricVal(Func<RagFlowApi.Models.WeightSweepRow, double> f, bool isProxy = false) {
+                        if (bestRow is null) return "—";
+                        var v = f(bestRow);
+                        return v < 0 ? "—" : v.ToString("F2");
+                    }
+                }
+
+                <div class="metric-card" style="--c:#4f6ef7">
+                    <div class="metric-card-name"><span class="metric-card-dot"></span>Retrieval Precision</div>
+                    <div class="metric-card-trend" style="color:#4f6ef7">↑ with more BM25</div>
+                    <div class="metric-card-desc">Fraction of returned chunks with high confidence score (&gt;0.5). Keyword matching is precise — BM25 returns fewer chunks but they tend to match exactly.</div>
+                    @if (bestRow is not null) { <div class="metric-card-val" style="color:#4f6ef7">@MetricVal(r => r.AvgPrecisionProxy)</div> }
+                </div>
+
+                <div class="metric-card" style="--c:#2dd4a0">
+                    <div class="metric-card-name"><span class="metric-card-dot"></span>Retrieval Recall</div>
+                    <div class="metric-card-trend" style="color:#2dd4a0">↑ with more Vector</div>
+                    <div class="metric-card-desc">Retrieved chunks / total corpus chunks. Semantic search casts a wider net — more chunks pass the similarity threshold, covering more of the corpus.</div>
+                    @if (bestRow is not null) { <div class="metric-card-val" style="color:#2dd4a0">@MetricVal(r => r.AvgRecallProxy)</div> }
+                </div>
+
+                <div class="metric-card" style="--c:#f5a623">
+                    <div class="metric-card-name"><span class="metric-card-dot"></span>F1 Score</div>
+                    <div class="metric-card-trend" style="color:#f5a623">∪ peaks in the middle</div>
+                    <div class="metric-card-desc">Harmonic mean of Precision &amp; Recall. Peaks at the weight where the retriever is both precise enough and wide enough — usually the optimal operating point.</div>
+                    @if (bestRow is not null) { <div class="metric-card-val" style="color:#f5a623">@MetricVal(r => r.F1Proxy)</div> }
+                </div>
+
+                <div class="metric-card" style="--c:#c084fc">
+                    <div class="metric-card-name"><span class="metric-card-dot"></span>Faithfulness</div>
+                    <div class="metric-card-trend" style="color:#c084fc">↑ with more BM25 (law)</div>
+                    <div class="metric-card-desc">RAGAS: are all claims in the answer grounded in the retrieved chunks? Too much vector drift brings irrelevant context → LLM hallucinates to fill gaps.</div>
+                    @if (bestRow is not null) { <div class="metric-card-val" style="color:#c084fc">@MetricVal(r => r.AvgFaithfulness)</div> }
+                </div>
+
+                <div class="metric-card" style="--c:#fb923c">
+                    <div class="metric-card-name"><span class="metric-card-dot"></span>Answer Relevancy</div>
+                    <div class="metric-card-trend" style="color:#fb923c">↑ with more Vector</div>
+                    <div class="metric-card-desc">RAGAS: does the answer actually address the question? Semantic retrieval handles rephrased or vague questions better, so relevancy benefits from more vector weight.</div>
+                    @if (bestRow is not null) { <div class="metric-card-val" style="color:#fb923c">@MetricVal(r => r.AvgRelevancy)</div> }
+                </div>
+            </div>
+
+            <p class="bench-info">
+                Runs <strong>@Model.Questions.Count question(s)</strong> from <code>eval_questions.json</code>
+                at BM25 weights [0.0, 0.2, 0.3, 0.5, 0.7, 1.0].
+                Each weight makes 2 Gemini calls per question (Faithfulness + Answer Relevancy).
+                Retrieval Precision, Recall, and F1 are computed from similarity scores — no extra Gemini calls needed.
+            </p>
+
+            <div style="display:flex;align-items:center;gap:10px">
+                <form method="post" asp-page-handler="Sweep">
+                    @Html.AntiForgeryToken()
+                    <button class="bench-btn" @(Model.Questions.Count == 0 ? "disabled" : "")>
+                        Run Analysis
+                        <span style="opacity:.7;font-weight:400">(≈ @(Model.Questions.Count * 6 * 2) Gemini calls)</span>
+                    </button>
+                </form>
+            </div>
+
+            @* ── Results ── *@
+            @if (sr is not null && sr.Error is null && sr.Rows.Count > 0)
+            {
+                <div class="chart-wrap">
+                    <div class="chart-title">All 5 Metrics vs BM25 Weight — what goes up, what goes down</div>
+                    <canvas id="sweepChart" height="280"></canvas>
+                </div>
+
+                <div class="result-toolbar">
+                    <span class="result-toolbar-label">Full data — @sr.QCount question(s), @sr.Rows.Count weights</span>
+                    <button class="bench-btn bench-btn--ghost" onclick="downloadCsv('sweep-table','sweep_results.csv')">↓ CSV</button>
+                </div>
+
+                <div class="bench-table-wrap">
+                    <table class="bench-table" id="sweep-table">
+                        <thead>
+                            <tr>
+                                <th>BM25</th>
+                                <th>Vector</th>
+                                <th style="color:#4f6ef7">Precision ↑BM25</th>
+                                <th style="color:#2dd4a0">Recall ↑Vec</th>
+                                <th style="color:#f5a623">F1</th>
+                                <th style="color:#c084fc">Faithfulness</th>
+                                <th style="color:#fb923c">Ans. Relevancy</th>
+                                <th>Parsed</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in sr.Rows)
+                            {
+                                bool isBest = bestRow is not null && row.Bm25Weight == bestRow.Bm25Weight;
+                                <tr class="@(isBest ? "row-best" : "")">
+                                    <td style="font-family:var(--font-mono);font-weight:600">
+                                        @row.Bm25Weight.ToString("F1")
+                                        @if (isBest) { <span style="color:var(--accent);margin-left:5px">★</span> }
+                                    </td>
+                                    <td style="font-family:var(--font-mono)">@row.VectorWeight.ToString("F1")</td>
+                                    <td><span class="@ScoreClass(row.AvgPrecisionProxy)">@row.AvgPrecisionProxy.ToString("F2")</span></td>
+                                    <td><span class="@ScoreClass(row.AvgRecallProxy)">@row.AvgRecallProxy.ToString("F3")</span></td>
+                                    <td><span class="@ScoreClass(row.F1Proxy)">@row.F1Proxy.ToString("F2")</span></td>
+                                    <td><span class="@ScoreClass(row.AvgFaithfulness)">@FormatScore(row.AvgFaithfulness)</span></td>
+                                    <td><span class="@ScoreClass(row.AvgRelevancy)">@FormatScore(row.AvgRelevancy)</span></td>
+                                    <td style="color:var(--text-muted);font-family:var(--font-mono)">@row.ParsedLabel</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (bestRow is not null)
+                {
+                    <p style="margin-top:12px;font-size:13px;color:var(--text-muted)">
+                        ★ Best overall at <strong style="color:var(--text-primary)">BM25=@bestRow.Bm25Weight.ToString("F1") / Vector=@bestRow.VectorWeight.ToString("F1")</strong>
+                        (combined score @bestRow.AvgCombined.ToString("F2"))
+                    </p>
+                }
+            }
+            @if (sr?.Error is not null)
+            {
+                <div class="bench-error">@sr.Error</div>
+            }
+        </div>
+    </div>
+
+    @* ── Additional Tools ── *@
+    <div class="bench-divider">Additional Tools</div>
+
+    @* ── Semantic Proof ── *@
+    <details class="tool-details">
+        <summary>
+            <span>Semantic Understanding Proof <span class="bench-section-tag" style="margin-left:10px">Defense Q4</span></span>
+            <span class="tool-chevron">▶</span>
+        </summary>
+        <div class="tool-details-body">
+            <p class="bench-info">
+                Enter the same question phrased two different ways. High Jaccard overlap (shared chunk IDs)
+                proves the retriever understands meaning, not just keywords.
+            </p>
+            <form method="post" asp-page-handler="Semantic">
+                @Html.AntiForgeryToken()
+                <div class="bench-grid-2">
+                    <div class="bench-field">
+                        <label class="bench-label">Original Question</label>
+                        <textarea class="bench-textarea" name="SemanticQuestion"
+                                  placeholder="e.g. Phí bảo hiểm y tế là bao nhiêu?">@Model.SemanticQuestion</textarea>
+                    </div>
+                    <div class="bench-field">
+                        <label class="bench-label">Paraphrase (different wording)</label>
+                        <textarea class="bench-textarea" name="SemanticParaphrase"
+                                  placeholder="e.g. Mức đóng bảo hiểm sức khoẻ được quy định thế nào?">@Model.SemanticParaphrase</textarea>
+                    </div>
+                </div>
+                <button class="bench-btn">Retrieve &amp; Compare</button>
+            </form>
+
+            @if (Model.SemanticResult is { } sem && sem.Error is null)
+            {
+                int pct = (int)Math.Round(sem.JaccardOverlap * 100);
+                string jClass = sem.JaccardOverlap >= 0.5 ? "score--high" : sem.JaccardOverlap >= 0.25 ? "score--mid" : "score--low";
+                int unionCount = new HashSet<string>(sem.OriginalChunks.Select(c => c.Id).Concat(sem.ParaphraseChunks.Select(c => c.Id))).Count;
+
+                <div class="overlap-summary">
+                    <div class="overlap-big"><span class="@jClass">@pct%</span></div>
+                    <div class="overlap-details">
+                        <div style="font-size:13px">
+                            Jaccard: <strong>@sem.JaccardOverlap.ToString("F3")</strong>
+                            &nbsp;·&nbsp; @sem.OverlappingIds.Count / @unionCount chunks shared
+                        </div>
+                        <div class="overlap-bar-wrap"><div class="overlap-bar" style="width:@pct%"></div></div>
+                        <div style="font-size:12px;color:var(--text-muted);margin-top:5px">
+                            @(pct >= 50 ? "Strong semantic understanding ✓" : pct >= 25 ? "Partial overlap" : "Low overlap — try a closer paraphrase")
+                        </div>
+                    </div>
+                </div>
+                <div class="chunk-grid">
+                    <div>
+                        <div class="chunk-grid-label">Original — @sem.OriginalChunks.Count chunk(s)</div>
+                        <div class="chunk-badges">
+                            @foreach (var c in sem.OriginalChunks)
+                            {
+                                bool shared = sem.OverlappingIds.Contains(c.Id);
+                                <span class="chunk-badge @(shared ? "chunk-badge--match" : "")">@c.Id[..Math.Min(8,c.Id.Length)]@(shared?" ✓":"")</span>
+                            }
+                        </div>
+                    </div>
+                    <div>
+                        <div class="chunk-grid-label">Paraphrase — @sem.ParaphraseChunks.Count chunk(s)</div>
+                        <div class="chunk-badges">
+                            @foreach (var c in sem.ParaphraseChunks)
+                            {
+                                bool shared = sem.OverlappingIds.Contains(c.Id);
+                                <span class="chunk-badge @(shared ? "chunk-badge--match" : "")">@c.Id[..Math.Min(8,c.Id.Length)]@(shared?" ✓":"")</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            @if (Model.SemanticResult?.Error is not null) { <div class="bench-error">@Model.SemanticResult.Error</div> }
+        </div>
+    </details>
+
+    @* ── Chunking Comparison ── *@
+    <details class="tool-details">
+        <summary>
+            <span>Chunking Strategy Comparison <span class="bench-section-tag" style="margin-left:10px">Defense Q11</span></span>
+            <span class="tool-chevron">▶</span>
+        </summary>
+        <div class="tool-details-body">
+            <p class="bench-info">
+                Layout-aware chunker (section-aware, table-isolated, header-propagated) vs naive fixed-size split on the same text.
+            </p>
+            <form method="post" asp-page-handler="Chunking">
+                @Html.AntiForgeryToken()
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+                    <label class="bench-label" style="margin:0">Naive chunk size (chars)</label>
+                    <input class="bench-input bench-input-sm" type="number" name="NaiveChunkSize"
+                           value="@Model.NaiveChunkSize" min="100" max="2000" />
+                </div>
+                <button class="bench-btn">Compare Strategies</button>
+            </form>
+
+            @if (Model.ChunkResult is { } cr && cr.Error is null)
+            {
+                <div style="display:flex;justify-content:flex-end;margin-top:14px;margin-bottom:8px">
+                    <button class="bench-btn bench-btn--ghost" onclick="downloadCsv('chunk-table','chunking_comparison.csv')">↓ CSV</button>
+                </div>
+                <div class="bench-table-wrap">
+                    <table class="bench-table" id="chunk-table">
+                        <thead>
+                            <tr><th>Strategy</th><th>Chunks</th><th>Avg Len</th><th>Min Len</th><th>Max Len</th><th>Preserves Structure</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in new[] { cr.Layout, cr.Naive })
+                            {
+                                <tr>
+                                    <td style="font-weight:600">@row.Strategy</td>
+                                    <td style="font-family:var(--font-mono)">@row.ChunkCount</td>
+                                    <td style="font-family:var(--font-mono)">@row.AvgLen.ToString("F0")</td>
+                                    <td style="font-family:var(--font-mono)">@row.MinLen.ToString("F0")</td>
+                                    <td style="font-family:var(--font-mono)">@row.MaxLen.ToString("F0")</td>
+                                    <td>@(row.PreservesStructure ? Html.Raw("<span class=\"score--high\">✓ Yes</span>") : Html.Raw("<span class=\"score--low\">✗ No</span>"))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="chart-wrap">
+                    <div class="chart-title">Strategy Comparison</div>
+                    <canvas id="chunkChart" height="180"></canvas>
+                </div>
+                <div class="sample-grid">
+                    @foreach (var row in new[] { cr.Layout, cr.Naive })
+                    {
+                        <div class="sample-block">
+                            <div class="sample-block-label">@row.Strategy</div>
+                            @foreach (var s in row.Samples) { <pre class="sample-pre">@s</pre> }
+                        </div>
+                    }
+                </div>
+            }
+            @if (Model.ChunkResult?.Error is not null) { <div class="bench-error">@Model.ChunkResult.Error</div> }
+        </div>
+    </details>
+
+    @* ── OCR CER / WER ── *@
+    <details class="tool-details">
+        <summary>
+            <span>OCR Quality: CER / WER <span class="bench-section-tag" style="margin-left:10px">Defense Q3 &amp; Q9</span></span>
+            <span class="tool-chevron">▶</span>
+        </summary>
+        <div class="tool-details-body">
+            <p class="bench-info">
+                Paste ground-truth text and the OCR output. Computes CER and WER via Levenshtein.
+                Run once for Dots OCR and once for DeepDoc on the same page to compare them directly.
+                CER &lt; 5% = excellent.
+            </p>
+            <form method="post" asp-page-handler="Ocr">
+                @Html.AntiForgeryToken()
+                <div class="bench-grid-2">
+                    <div class="bench-field">
+                        <label class="bench-label">Reference (ground truth)</label>
+                        <textarea class="bench-textarea" name="OcrReference" rows="8"
+                                  placeholder="Manually type the correct text from the scanned page">@Model.OcrReference</textarea>
+                    </div>
+                    <div class="bench-field">
+                        <label class="bench-label">Hypothesis (OCR output)</label>
+                        <textarea class="bench-textarea" name="OcrHypothesis" rows="8"
+                                  placeholder="Paste what the OCR model extracted">@Model.OcrHypothesis</textarea>
+                    </div>
+                </div>
+                <button class="bench-btn">Compute CER / WER</button>
+            </form>
+
+            @if (Model.OcrResult is { } ocr && ocr.Error is null)
+            {
+                string cerColor = ocr.Cer < 0.05 ? "#2dd4a0" : ocr.Cer < 0.15 ? "#f5a623" : "#f76f6f";
+                string werColor = ocr.Wer < 0.05 ? "#2dd4a0" : ocr.Wer < 0.15 ? "#f5a623" : "#f76f6f";
+                int cerPct = Math.Min(100, (int)Math.Round(ocr.Cer * 100));
+                int werPct = Math.Min(100, (int)Math.Round(ocr.Wer * 100));
+
+                <div class="ocr-gauges">
+                    <div class="ocr-gauge-card">
+                        <div class="ocr-gauge-label">Character Error Rate (CER)</div>
+                        <div class="ocr-gauge-val" style="color:@cerColor">@ocr.CerDisplay</div>
+                        <div class="ocr-gauge-sub">@ocr.CharEdits edits / @ocr.RefChars chars</div>
+                        <div class="ocr-gauge-bar-wrap"><div class="ocr-gauge-bar" style="width:@cerPct%;background:@cerColor"></div></div>
+                    </div>
+                    <div class="ocr-gauge-card">
+                        <div class="ocr-gauge-label">Word Error Rate (WER)</div>
+                        <div class="ocr-gauge-val" style="color:@werColor">@ocr.WerDisplay</div>
+                        <div class="ocr-gauge-sub">@ocr.WordEdits edits / @ocr.RefWords words</div>
+                        <div class="ocr-gauge-bar-wrap"><div class="ocr-gauge-bar" style="width:@werPct%;background:@werColor"></div></div>
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;margin-top:14px;margin-bottom:8px">
+                    <button class="bench-btn bench-btn--ghost" onclick="downloadCsv('ocr-table','ocr_results.csv')">↓ CSV</button>
+                </div>
+                <div class="bench-table-wrap">
+                    <table class="bench-table" id="ocr-table">
+                        <thead><tr><th>Metric</th><th>Rate</th><th>Edits</th><th>Ref Length</th><th>Hyp Length</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td style="font-weight:600">CER <span style="color:var(--text-muted);font-weight:400">(character)</span></td>
+                                <td><span class="@ocr.CerClass">@ocr.CerDisplay</span></td>
+                                <td style="font-family:var(--font-mono)">@ocr.CharEdits</td>
+                                <td style="color:var(--text-muted);font-family:var(--font-mono)">@ocr.RefChars chars</td>
+                                <td style="color:var(--text-muted);font-family:var(--font-mono)">@ocr.HypChars chars</td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:600">WER <span style="color:var(--text-muted);font-weight:400">(word)</span></td>
+                                <td><span class="@ocr.WerClass">@ocr.WerDisplay</span></td>
+                                <td style="font-family:var(--font-mono)">@ocr.WordEdits</td>
+                                <td style="color:var(--text-muted);font-family:var(--font-mono)">@ocr.RefWords words</td>
+                                <td style="color:var(--text-muted);font-family:var(--font-mono)">@ocr.HypWords words</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            }
+            @if (Model.OcrResult?.Error is not null) { <div class="bench-error">@Model.OcrResult.Error</div> }
+        </div>
+    </details>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    // ── Dark theme defaults ──────────────────────────────────────────────────
+    Chart.defaults.color       = '#7880a0';
+    Chart.defaults.borderColor = '#2a2f45';
+    Chart.defaults.font.family = "'DM Mono', monospace";
+    Chart.defaults.font.size   = 11;
+
+    const GRID = 'rgba(42,47,69,0.8)';
+    const TIP  = { backgroundColor:'#181c27', borderColor:'#2a2f45', borderWidth:1, titleColor:'#e8eaf2', bodyColor:'#7880a0' };
+
+    const C = {
+        prec : '#4f6ef7',
+        rec  : '#2dd4a0',
+        f1   : '#f5a623',
+        faith: '#c084fc',
+        rel  : '#fb923c',
+        naive: '#f76f6f'
+    };
+
+    // ── 1. Sweep line chart (5 metrics) ─────────────────────────────────────
+    const sweepData = @Html.Raw(sweepJson);
+    if (sweepData && sweepData.length && document.getElementById('sweepChart')) {
+        const labels = sweepData.map(r => 'BM25=' + r.bm25Weight.toFixed(1));
+        const toArr  = fn => sweepData.map(fn);
+
+        new Chart(document.getElementById('sweepChart'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label:'Retrieval Precision ↑BM25', data: toArr(r=>r.avgPrecisionProxy),    borderColor:C.prec,  backgroundColor:C.prec+'22',  tension:.35, pointRadius:5, fill:false },
+                    { label:'Retrieval Recall ↑Vector',  data: toArr(r=>r.avgRecallProxy),        borderColor:C.rec,   backgroundColor:C.rec+'22',   tension:.35, pointRadius:5, fill:false },
+                    { label:'F1 (peaks middle)',          data: toArr(r=>r.f1Proxy),              borderColor:C.f1,    backgroundColor:C.f1+'22',    tension:.35, pointRadius:5, fill:false, borderDash:[5,3] },
+                    { label:'Faithfulness (RAGAS)',       data: toArr(r=>r.avgFaithfulness>=0?r.avgFaithfulness:null), borderColor:C.faith, backgroundColor:C.faith+'22', tension:.35, pointRadius:5, fill:false },
+                    { label:'Answer Relevancy (RAGAS)',   data: toArr(r=>r.avgRelevancy>=0?r.avgRelevancy:null),       borderColor:C.rel,   backgroundColor:C.rel+'22',   tension:.35, pointRadius:5, fill:false }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode:'index', intersect:false },
+                plugins: {
+                    legend: { position:'bottom', labels:{ color:'#7880a0', boxWidth:14, padding:16, font:{size:11} } },
+                    tooltip: TIP
+                },
+                scales: {
+                    x: { grid:{ color:GRID }, ticks:{ color:'#7880a0' } },
+                    y: { min:0, max:1, grid:{ color:GRID }, ticks:{ color:'#7880a0', callback:v=>v.toFixed(2) } }
+                }
+            }
+        });
+    }
+
+    // ── 2. Chunking grouped bar chart ────────────────────────────────────────
+    const chunkData = @Html.Raw(chunkJson ?? "null");
+    if (chunkData && chunkData.length === 2 && document.getElementById('chunkChart')) {
+        new Chart(document.getElementById('chunkChart'), {
+            type: 'bar',
+            data: {
+                labels: ['Chunk Count', 'Avg Length', 'Max Length'],
+                datasets: [
+                    { label:'Layout-Aware',   data:[chunkData[0].chunkCount,chunkData[0].avgLen,chunkData[0].maxLen], backgroundColor:C.prec+'bb', borderColor:C.prec, borderWidth:1, borderRadius:4 },
+                    { label:'Naive Fixed-Size',data:[chunkData[1].chunkCount,chunkData[1].avgLen,chunkData[1].maxLen], backgroundColor:C.naive+'bb',borderColor:C.naive,borderWidth:1, borderRadius:4 }
+                ]
+            },
+            options: {
+                responsive:true,
+                plugins:{ legend:{labels:{color:'#7880a0',boxWidth:14,padding:14}}, tooltip:TIP },
+                scales:{ x:{grid:{color:GRID},ticks:{color:'#7880a0'}}, y:{grid:{color:GRID},ticks:{color:'#7880a0'}} }
+            }
+        });
+    }
+
+    // ── CSV download ─────────────────────────────────────────────────────────
+    window.downloadCsv = function(tableId, filename) {
+        const tbl = document.getElementById(tableId);
+        if (!tbl) return;
+        const rows = [...tbl.querySelectorAll('tr')]
+            .map(r=>[...r.querySelectorAll('th,td')]
+                .map(c=>'"'+c.innerText.replace(/"/g,'""').replace(/\n/g,' ')+'"').join(','))
+            .join('\n');
+        trigger('data:text/csv;charset=utf-8,﻿'+encodeURIComponent(rows), filename);
+    };
+
+    // ── Report download ───────────────────────────────────────────────────────
+    window.downloadReport = function() {
+        const scale = @Html.Raw(scaleJson ?? "null");
+        const sweep = @Html.Raw(sweepJson);
+        const chunk = @Html.Raw(chunkJson ?? "null");
+        const ocr   = @Html.Raw(ocrJson   ?? "null");
+
+        const lines = ['# RAG Benchmark Report','','Generated: '+new Date().toLocaleString(),''];
+
+        if (scale) {
+            lines.push('## System Scale','');
+            lines.push(`- Chunks: ${scale.totalChunks}  |  Documents: ${scale.uniqueDocuments}  |  Datasets: ${scale.uniqueDatasets}`);
+            lines.push(`- Vector store: ${scale.storeSizeDisplay}  |  Avg chars/chunk: ${scale.avgCharsPerChunk}  |  Est. latency: ~${scale.estQueryMs} ms`,'');
+        }
+
+        if (sweep && sweep.length) {
+            lines.push('## BM25 vs Vector Trade-off','');
+            lines.push('| BM25 | Vector | Precision↑BM25 | Recall↑Vec | F1 | Faithfulness | Ans.Relevancy | Parsed |');
+            lines.push('|------|--------|----------------|------------|-----|-------------|--------------|--------|');
+            sweep.forEach(r => {
+                const f  = r.avgFaithfulness >= 0 ? r.avgFaithfulness.toFixed(2) : '—';
+                const rv = r.avgRelevancy    >= 0 ? r.avgRelevancy.toFixed(2)    : '—';
+                lines.push(`| ${r.bm25Weight.toFixed(1)} | ${r.vectorWeight.toFixed(1)} | ${r.avgPrecisionProxy.toFixed(2)} | ${r.avgRecallProxy.toFixed(3)} | ${r.f1Proxy.toFixed(2)} | ${f} | ${rv} | ${r.parsedCount}/${r.totalCount} |`);
+            });
+            lines.push('','> Precision proxy = fraction of returned chunks with combined score > 0.5');
+            lines.push('> Recall proxy = returned chunk count / total corpus chunks','');
+        }
+
+        if (chunk && chunk.length === 2) {
+            lines.push('## Chunking Strategy Comparison','');
+            lines.push('| Strategy | Chunks | Avg Len | Min | Max | Structure |');
+            lines.push('|----------|--------|---------|-----|-----|-----------|');
+            chunk.forEach(r => lines.push(`| ${r.strategy} | ${r.chunkCount} | ${Math.round(r.avgLen)} | ${Math.round(r.minLen)} | ${Math.round(r.maxLen)} | ${r.preservesStructure?'Yes':'No'} |`));
+            lines.push('');
+        }
+
+        if (ocr) {
+            lines.push('## OCR Quality','');
+            lines.push(`- CER: ${(ocr.cer*100).toFixed(1)}%  (${ocr.charEdits} edits / ${ocr.refChars} chars)`);
+            lines.push(`- WER: ${(ocr.wer*100).toFixed(1)}%  (${ocr.wordEdits} edits / ${ocr.refWords} words)`,'');
+        }
+
+        trigger('data:text/markdown;charset=utf-8,'+encodeURIComponent(lines.join('\n')), 'benchmark_report.md');
+    };
+
+    function trigger(url, name) {
+        const a = Object.assign(document.createElement('a'), { href:url, download:name });
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+})();
+</script>
+
+@functions {
+    static string FormatScore(double v) => v < 0 ? "—" : v.ToString("F2");
+    static string ScoreClass(double v) =>
+        v < 0      ? "score--dash"
+        : v >= 0.7 ? "score--high"
+        : v >= 0.4 ? "score--mid"
+        : "score--low";
+}

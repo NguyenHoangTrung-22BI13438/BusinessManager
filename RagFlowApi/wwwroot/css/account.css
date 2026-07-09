@@ -164,7 +164,7 @@
     border-radius: var(--radius);
     width: 100%;
     max-width: 560px;
-    max-height: 90vh;
+    max-height: calc(100vh - 40px); /* 40px = 2 × backdrop padding */
     display: flex;
     flex-direction: column;
     box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
@@ -186,6 +186,7 @@
     justify-content: space-between;
     padding: 18px 22px 14px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0; /* never compress the header */
 }
 
 .modal-title {
@@ -222,7 +223,8 @@
     gap: 20px;
     overflow-y: auto;
     flex: 1;
-    min-height: 0;
+    min-height: 0;       /* critical: lets flex child shrink below content height */
+    overscroll-behavior: contain;
 }
 
 /* ── User info section ───────────────────────────────────────────────────── */

@@ -1,177 +1,198 @@
-using System.Text.Json;
-using RagFlowApi.Models;
+using Dapper;
 using Microsoft.AspNetCore.Identity;
+using RagFlowApi.Models;
+using System.Text.Json;
 
 namespace RagFlowApi.Services;
 
-/// <summary>
-/// Singleton service that manages persistent user account storage.
-/// Reads and writes a JSON file (users.json) located in the application
-/// content root alongside appsettings.json.
-/// Thread-safe: all file operations are protected by a SemaphoreSlim.
-/// </summary>
 public class UserStore
 {
-    private readonly string                       _filePath;
-    private readonly ILogger<UserStore>           _log;
-    private readonly PasswordHasher<UserRecord>   _hasher = new();
-    private readonly SemaphoreSlim                _lock   = new(1, 1);
-    private static readonly JsonSerializerOptions _writeOptions =
-    new()
-    { WriteIndented = true };
+    private readonly AppDbContext _db;
+    private readonly ILogger<UserStore> _log;
+    private readonly PasswordHasher<UserRecord> _hasher = new();
 
-    public UserStore(IWebHostEnvironment env, ILogger<UserStore> log)
+    private static readonly JsonSerializerOptions _jsonOpts = new()
     {
-        _filePath = Path.Combine(env.ContentRootPath, "users.json");
-        _log      = log;
+        PropertyNameCaseInsensitive = true
+    };
 
-        // Create an empty store file if it does not exist yet
-        if (!File.Exists(_filePath))
-            File.WriteAllText(_filePath, "[]");
+    public UserStore(AppDbContext db, ILogger<UserStore> log)
+    {
+        _db = db;
+        _log = log;
     }
 
-    // ── Read ──────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Loads all user records from the JSON file.
-    /// Returns an empty list if the file is missing or malformed.
-    /// </summary>
     public async Task<List<UserRecord>> GetAllAsync()
     {
-        await _lock.WaitAsync();
         try
         {
-            var json = await File.ReadAllTextAsync(_filePath);
-            return JsonSerializer.Deserialize<List<UserRecord>>(json)
-                   ?? [];
+            await using var conn = _db.CreateConnection();
+            var rows = await conn.QueryAsync<UserRow>("SELECT * FROM users ORDER BY created_at");
+            return rows.Select(ToRecord).ToList();
         }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "Failed to read users.json");
-            return [];
-        }
-        finally { _lock.Release(); }
+        catch (Exception ex) { _log.LogError(ex, "GetAllAsync failed"); return []; }
     }
 
-    /// <summary>
-    /// Finds a single user by their username (case-insensitive).
-    /// Returns null if no matching record exists.
-    /// </summary>
-    /// <param name="username">The username to search for.</param>
     public async Task<UserRecord?> GetByUsernameAsync(string username)
     {
-        var all = await GetAllAsync();
-        return all.FirstOrDefault(u =>
-            u.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
-    }
-    /// <summary>
-    /// Returns the first admin user who already has a dataset created.
-    /// Used by normal users to resolve the shared corpus dataset ID.
-    /// </summary>
-    public async Task<UserRecord?> GetAdminWithDatasetAsync()
-    {
-        var all = await GetAllAsync();
-        return all.FirstOrDefault(u =>
-            u.IsAdmin && !string.IsNullOrWhiteSpace(u.DatasetId));
+        try
+        {
+            await using var conn = _db.CreateConnection();
+            var row = await conn.QueryFirstOrDefaultAsync<UserRow>(
+                "SELECT * FROM users WHERE username = @u", new { u = username });
+            return row is null ? null : ToRecord(row);
+        }
+        catch (Exception ex) { _log.LogError(ex, "GetByUsernameAsync failed"); return null; }
     }
 
-    /// <summary>
-    /// Checks whether a username is already registered.
-    /// </summary>
-    /// <param name="username">The username to check.</param>
-    /// <returns>True if the username is taken; false otherwise.</returns>
+    public async Task<UserRecord?> GetAdminWithDatasetAsync()
+    {
+        try
+        {
+            await using var conn = _db.CreateConnection();
+            var row = await conn.QueryFirstOrDefaultAsync<UserRow>(
+                "SELECT * FROM users WHERE is_admin = 1 AND dataset_id IS NOT NULL AND dataset_id != '' LIMIT 1");
+            return row is null ? null : ToRecord(row);
+        }
+        catch (Exception ex) { _log.LogError(ex, "GetAdminWithDatasetAsync failed"); return null; }
+    }
+
     public async Task<bool> ExistsAsync(string username)
         => await GetByUsernameAsync(username) is not null;
 
-    // ── Write ─────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Appends a new user record to the JSON file.
-    /// Throws InvalidOperationException if the username is already taken.
-    /// </summary>
-    /// <param name="record">The fully populated UserRecord to persist.</param>
     public async Task AddAsync(UserRecord record)
     {
-        await _lock.WaitAsync();
-        try
-        {
-            var json = await File.ReadAllTextAsync(_filePath);
-            var all  = JsonSerializer.Deserialize<List<UserRecord>>(json)
-                       ?? [];
+        await using var conn = _db.CreateConnection();
+        var existing = await conn.QueryFirstOrDefaultAsync<string>(
+            "SELECT username FROM users WHERE username = @u", new { u = record.Username });
+        if (existing is not null)
+            throw new InvalidOperationException($"Username '{record.Username}' is already taken.");
 
-            // Guard against race conditions where two registrations arrive simultaneously
-            if (all.Any(u => u.Username.Equals(
-                    record.Username, StringComparison.OrdinalIgnoreCase)))
-                throw new InvalidOperationException(
-                    $"Username '{record.Username}' is already taken.");
+        await conn.ExecuteAsync(@"
+            INSERT INTO users
+                (username, display_name, password_hash, is_admin,
+                 dataset_id, assistant_id, dataset_bound, profile_json, created_at)
+            VALUES
+                (@Username, @DisplayName, @PasswordHash, @IsAdmin,
+                 @DatasetId, @AssistantId, @DatasetBound, @ProfileJson, @CreatedAt)",
+            new
+            {
+                record.Username,
+                record.DisplayName,
+                record.PasswordHash,
+                record.IsAdmin,
+                DatasetId   = string.IsNullOrEmpty(record.DatasetId)   ? null : record.DatasetId,
+                AssistantId = string.IsNullOrEmpty(record.AssistantId) ? null : record.AssistantId,
+                record.DatasetBound,
+                ProfileJson = SerializeProfile(record),
+                CreatedAt   = record.CreatedAt
+            });
 
-            all.Add(record);
-
-            await File.WriteAllTextAsync(_filePath, JsonSerializer.Serialize(all, _writeOptions));
-
-            _log.LogInformation("Registered new user: {Username}", record.Username);
-        }
-        finally { _lock.Release(); }
+        _log.LogInformation("Registered new user: {Username}", record.Username);
     }
 
-    /// <summary>
-    /// Overwrites an existing user record in users.json.
-    /// Called by UserContext after creating a dataset or assistant
-    /// to persist the new ID back to disk.
-    /// Throws InvalidOperationException if the username is not found.
-    /// </summary>
-    /// <param name="updated">The updated UserRecord to save.</param>
     public async Task UpdateAsync(UserRecord updated)
     {
-        await _lock.WaitAsync();
-        try
-        {
-            var json = await File.ReadAllTextAsync(_filePath);
-            var all = JsonSerializer.Deserialize<List<UserRecord>>(json)
-                       ?? [];
+        await using var conn = _db.CreateConnection();
+        var affected = await conn.ExecuteAsync(@"
+            UPDATE users SET
+                display_name  = @DisplayName,
+                password_hash = @PasswordHash,
+                is_admin      = @IsAdmin,
+                dataset_id    = @DatasetId,
+                assistant_id  = @AssistantId,
+                dataset_bound = @DatasetBound,
+                profile_json  = @ProfileJson
+            WHERE username = @Username",
+            new
+            {
+                updated.Username,
+                updated.DisplayName,
+                updated.PasswordHash,
+                updated.IsAdmin,
+                DatasetId   = string.IsNullOrEmpty(updated.DatasetId)   ? null : updated.DatasetId,
+                AssistantId = string.IsNullOrEmpty(updated.AssistantId) ? null : updated.AssistantId,
+                updated.DatasetBound,
+                ProfileJson = SerializeProfile(updated)
+            });
 
-            var idx = all.FindIndex(u =>
-                u.Username?.Equals(updated.Username, StringComparison.OrdinalIgnoreCase) == true);
+        if (affected == 0)
+            throw new InvalidOperationException($"Cannot update: user '{updated.Username}' not found.");
 
-            if (idx < 0)
-                throw new InvalidOperationException(
-                    $"Cannot update: user '{updated.Username}' not found.");
-
-            all[idx] = updated;
-
-            await File.WriteAllTextAsync(_filePath, JsonSerializer.Serialize(all, _writeOptions));
-
-            _log.LogInformation("Updated record for user: {Username}", updated.Username);
-        }
-        finally { _lock.Release(); }
+        _log.LogInformation("Updated record for user: {Username}", updated.Username);
     }
 
-    // ── Password helpers ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Hashes a plain-text password using ASP.NET Core's PasswordHasher.
-    /// The result is safe to store in users.json.
-    /// </summary>
-    /// <param name="plainPassword">The raw password entered by the user.</param>
-    /// <returns>A salted, hashed password string.</returns>
     public string HashPassword(string plainPassword)
-    {
-        // PasswordHasher requires a user object as context; we pass a blank one
-        var dummy = new UserRecord();
-        return _hasher.HashPassword(dummy, plainPassword);
-    }
+        => _hasher.HashPassword(new UserRecord(), plainPassword);
 
-    /// <summary>
-    /// Verifies a plain-text password against a stored hash.
-    /// </summary>
-    /// <param name="record">The user record containing the stored hash.</param>
-    /// <param name="plainPassword">The raw password to verify.</param>
-    /// <returns>True if the password matches; false otherwise.</returns>
     public bool VerifyPassword(UserRecord record, string plainPassword)
-    {
-        var result = _hasher.VerifyHashedPassword(
-            record, record.PasswordHash, plainPassword);
+        => _hasher.VerifyHashedPassword(record, record.PasswordHash, plainPassword)
+           != PasswordVerificationResult.Failed;
 
-        return result != PasswordVerificationResult.Failed;
+    // ── Mapping helpers ───────────────────────────────────────────────────────
+
+    private sealed class UserRow
+    {
+        public string   username      { get; set; } = "";
+        public string   display_name  { get; set; } = "";
+        public string   password_hash { get; set; } = "";
+        public bool     is_admin      { get; set; }
+        public string?  dataset_id    { get; set; }
+        public string?  assistant_id  { get; set; }
+        public bool     dataset_bound { get; set; }
+        public string?  profile_json  { get; set; }
+        public DateTime created_at    { get; set; }
     }
+
+    private static UserRecord ToRecord(UserRow r)
+    {
+        var rec = new UserRecord
+        {
+            Username     = r.username,
+            DisplayName  = r.display_name,
+            PasswordHash = r.password_hash,
+            IsAdmin      = r.is_admin,
+            DatasetId    = r.dataset_id    ?? "",
+            AssistantId  = r.assistant_id  ?? "",
+            DatasetBound = r.dataset_bound,
+            CreatedAt    = r.created_at
+        };
+
+        if (!string.IsNullOrEmpty(r.profile_json))
+        {
+            try
+            {
+                var p = JsonSerializer.Deserialize<ProfileJson>(r.profile_json, _jsonOpts);
+                if (p is not null)
+                {
+                    rec.FullName      = p.FullName;
+                    rec.DateOfBirth   = p.DateOfBirth;
+                    rec.PlaceOfBirth  = p.PlaceOfBirth;
+                    rec.Nationality   = p.Nationality;
+                    rec.IdNumber      = p.IdNumber;
+                    rec.IdIssuedDate  = p.IdIssuedDate;
+                    rec.IdIssuedPlace = p.IdIssuedPlace;
+                    rec.JobTitle      = p.JobTitle;
+                    rec.Department    = p.Department;
+                    rec.PhoneNumber   = p.PhoneNumber;
+                    rec.Email         = p.Email;
+                    rec.Address       = p.Address;
+                }
+            }
+            catch { }
+        }
+
+        return rec;
+    }
+
+    private static string SerializeProfile(UserRecord r) =>
+        JsonSerializer.Serialize(new ProfileJson(
+            r.FullName, r.DateOfBirth, r.PlaceOfBirth, r.Nationality,
+            r.IdNumber, r.IdIssuedDate, r.IdIssuedPlace, r.JobTitle,
+            r.Department, r.PhoneNumber, r.Email, r.Address));
+
+    private record ProfileJson(
+        string FullName, string DateOfBirth, string PlaceOfBirth, string Nationality,
+        string IdNumber, string IdIssuedDate, string IdIssuedPlace, string JobTitle,
+        string Department, string PhoneNumber, string Email, string Address);
 }

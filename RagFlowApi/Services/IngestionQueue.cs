@@ -9,7 +9,8 @@ public record IngestionJob(
     string DatasetId,
     byte[] Bytes,
     string FileName,
-    string ContentType
+    string ContentType,
+    string Category = "General"
 );
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -119,7 +120,8 @@ public sealed class IngestionWorker : BackgroundService
 
                 await pipeline.IngestAsync(
                     job.DatasetId,
-                    new ByteArrayFormFile(job.Bytes, job.FileName, job.ContentType));
+                    new ByteArrayFormFile(job.Bytes, job.FileName, job.ContentType),
+                    job.Category);
 
                 _store.Update(job.JobId, s =>
                 {
@@ -154,7 +156,8 @@ public record ReparseJob(
     string JobId,
     string DatasetId,
     string DocumentId,
-    string FileName
+    string FileName,
+    string Category = ""  // empty = auto-detect from existing chunks
 );
 
 public class ReparseChannel
@@ -193,7 +196,7 @@ public sealed class ReparseWorker : BackgroundService
                 await using var scope = _scopes.CreateAsyncScope();
                 var pipeline = scope.ServiceProvider.GetRequiredService<IngestionPipeline>();
 
-                await pipeline.ReingestAsync(job.DatasetId, job.DocumentId, job.FileName);
+                await pipeline.ReingestAsync(job.DatasetId, job.DocumentId, job.FileName, job.Category);
 
                 _store.Update(job.JobId, s =>
                 {

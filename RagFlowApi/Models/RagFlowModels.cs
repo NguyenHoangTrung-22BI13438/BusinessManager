@@ -62,7 +62,8 @@ public record DocumentItem(
     int ChunkCount,
     int TokenCount,
     double Progress,     // 0.0–1.0 while parsing
-    long CreateTime    // unix ms
+    long CreateTime,     // unix ms
+    string Category = "General"
 );
 public record DocumentChunk(
     string Id,
@@ -71,4 +72,20 @@ public record DocumentChunk(
     bool Available,
     string? ImageId,
     List<string> Keywords
+);
+
+/// <summary>
+/// A chunk stored in the local vector index (VectorChunkStore).
+/// Carries the pre-computed BGE-M3 embedding so retrieval needs no
+/// re-embedding of the corpus at query time.
+/// </summary>
+public record StoredChunk(
+    string Id,           // stable content-hash used as the dictionary key
+    string DatasetId,    // filters chunks to the right user's knowledge base
+    string DocumentId,
+    string DocumentName,
+    string Content,
+    float[] Embedding,   // BGE-M3 dense vector (~1024 dims)
+    List<string> Keywords,
+    string Category = "General"  // department tag; controls which users can retrieve this chunk
 );

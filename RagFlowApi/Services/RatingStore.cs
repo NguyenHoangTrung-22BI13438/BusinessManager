@@ -1,73 +1,66 @@
-using System.Text.Json;
+using Dapper;
 using RagFlowApi.Models;
 
 namespace RagFlowApi.Services;
 
 public class RatingStore
 {
-    private readonly string                       _filePath;
-    private readonly ILogger<RatingStore>         _log;
-    private readonly SemaphoreSlim                _lock = new(1, 1);
-    private static readonly JsonSerializerOptions _writeOptions = new() { WriteIndented = true };
+    private readonly AppDbContext _db;
+    private readonly ILogger<RatingStore> _log;
 
-    public RatingStore(IWebHostEnvironment env, ILogger<RatingStore> log)
+    public RatingStore(AppDbContext db, ILogger<RatingStore> log)
     {
-        _filePath = Path.Combine(env.ContentRootPath, "ratings.json");
-        _log      = log;
-        if (!File.Exists(_filePath))
-            File.WriteAllText(_filePath, "[]");
+        _db = db;
+        _log = log;
     }
 
     public async Task AddOrUpdateAsync(RatingEntry entry)
     {
-        await _lock.WaitAsync();
         try
         {
-            var all = await ReadAllInternalAsync();
-            var idx = all.FindIndex(r =>
-                r.SessionId == entry.SessionId &&
-                r.MessageId == entry.MessageId &&
-                r.Username  == entry.Username);
-            if (idx >= 0) all[idx] = entry;
-            else          all.Add(entry);
-            await File.WriteAllTextAsync(_filePath, JsonSerializer.Serialize(all, _writeOptions));
+            await using var conn = _db.CreateConnection();
+            await conn.ExecuteAsync(@"
+                INSERT INTO ratings (session_id, message_id, username, positive, rated_at)
+                VALUES (@SessionId, @MessageId, @Username, @Positive, @Timestamp)
+                ON DUPLICATE KEY UPDATE positive = @Positive, rated_at = @Timestamp",
+                new
+                {
+                    entry.SessionId,
+                    entry.MessageId,
+                    entry.Username,
+                    entry.Positive,
+                    entry.Timestamp
+                });
         }
-        catch (Exception ex) { _log.LogError(ex, "Failed to write ratings.json"); }
-        finally { _lock.Release(); }
+        catch (Exception ex) { _log.LogError(ex, "AddOrUpdateAsync failed"); }
     }
 
     public async Task<Dictionary<string, bool>> GetRatingsForUserInSessionAsync(
         string username, string sessionId)
     {
-        await _lock.WaitAsync();
-        try
-        {
-            var all = await ReadAllInternalAsync();
-            return all
-                .Where(r => r.Username == username && r.SessionId == sessionId)
-                .ToDictionary(r => r.MessageId, r => r.Positive);
-        }
-        finally { _lock.Release(); }
+        await using var conn = _db.CreateConnection();
+        var rows = await conn.QueryAsync<RatingRow>(
+            "SELECT message_id, positive FROM ratings WHERE username = @u AND session_id = @sid",
+            new { u = username, sid = sessionId });
+        return rows.ToDictionary(r => r.message_id, r => r.positive);
     }
 
     public async Task<List<RatingEntry>> GetAllAsync()
     {
-        await _lock.WaitAsync();
-        try   { return await ReadAllInternalAsync(); }
-        finally { _lock.Release(); }
+        await using var conn = _db.CreateConnection();
+        var rows = await conn.QueryAsync<RatingRow>(
+            "SELECT * FROM ratings ORDER BY rated_at");
+        return rows.Select(r =>
+            new RatingEntry(r.session_id, r.message_id, r.username, r.positive, r.rated_at)
+        ).ToList();
     }
 
-    private async Task<List<RatingEntry>> ReadAllInternalAsync()
+    private sealed class RatingRow
     {
-        try
-        {
-            var json = await File.ReadAllTextAsync(_filePath);
-            return JsonSerializer.Deserialize<List<RatingEntry>>(json) ?? [];
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "Failed to read ratings.json");
-            return [];
-        }
+        public string   session_id { get; set; } = "";
+        public string   message_id { get; set; } = "";
+        public string   username   { get; set; } = "";
+        public bool     positive   { get; set; }
+        public DateTime rated_at   { get; set; }
     }
 }

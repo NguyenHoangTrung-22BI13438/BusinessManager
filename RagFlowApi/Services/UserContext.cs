@@ -68,6 +68,25 @@ public class UserContext
         return _record;
     }
 
+    // ── Knowledge-base access control ────────────────────────────────────────
+
+    /// <summary>
+    /// Returns which knowledge-base categories this user may retrieve.
+    /// Admins: null  → no filter, see everything.
+    /// Others: [Department, "General"] — own department + shared content.
+    /// Users with no department set: ["General"] only.
+    /// </summary>
+    public async Task<IReadOnlyList<string>?> GetAllowedCategoriesAsync()
+    {
+        var record = await GetRecordAsync();
+        if (record.IsAdmin) return null;
+
+        var dept = (record.Department ?? "").Trim();
+        return string.IsNullOrEmpty(dept)
+            ? (IReadOnlyList<string>)["General"]
+            : [dept, "General"];
+    }
+
     // ── Dataset ───────────────────────────────────────────────────────────────
 
     /// <summary>

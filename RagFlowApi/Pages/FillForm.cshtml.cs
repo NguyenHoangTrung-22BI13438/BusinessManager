@@ -52,12 +52,12 @@ public class FillFormModel : PageModel
 
             var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
-            // Cache hit: skip detection + AI suggestion entirely
+            // Cache hit: skip detection + AI suggestion, but still apply the current user's profile.
             var cached = await _cache.GetAsync(hash);
             if (cached != null)
             {
                 TemplateId = await _filler.SaveTemplateBytesAsync(bytes, template.FileName);
-                Fields     = cached;
+                Fields     = await _filler.SuggestValuesAsync(cached);
                 FromCache  = true;
                 return Page();
             }

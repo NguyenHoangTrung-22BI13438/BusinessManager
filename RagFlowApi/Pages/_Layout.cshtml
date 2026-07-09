@@ -42,7 +42,8 @@
                         }
                     </a>
                     <a href="/swagger" class="nav-link nav-link--subtle">API</a>
-                    <a href="/Evaluate" class="nav-link">Evaluate</a>
+                    <a href="/Evaluate"  class="nav-link">Evaluate</a>
+                    <a href="/Benchmark" class="nav-link">Benchmark</a>
                 }
 
                 @* ── User dropdown ── *@
@@ -150,12 +151,17 @@
             }
             backdrop.classList.add('is-open');
             document.body.style.overflow = 'hidden';
+            applyModalScroll();
 
             if (!loaded) {
                 loaded = true;
                 fetchAccountContent();
             }
         }
+
+        window.addEventListener('resize', function () {
+            if (backdrop?.classList.contains('is-open')) applyModalScroll();
+        });
 
         function closeModal() {
             backdrop.classList.remove('is-open');
@@ -201,8 +207,19 @@
                 });
         }
 
+        // ── Constrain modal-body height so it scrolls ─────────────────────
+        function applyModalScroll() {
+            var header = document.querySelector('#accountModal .modal-header');
+            var headerH = header ? header.offsetHeight : 62;
+            var available = window.innerHeight - headerH - 40; // 40 = 2×backdrop padding
+            modalBody.style.maxHeight = available + 'px';
+            modalBody.style.overflowY = 'auto';
+            modalBody.style.overscrollBehavior = 'contain';
+        }
+
         // ── Wire everything inside the modal after any (re-)injection ─────
         function wireAccountModal(activeSection) {
+            applyModalScroll();
             wireTabs(activeSection);
             wireAjaxForm('changePwForm',  '/Account?handler=ChangePassword',  'password');
             wireAjaxForm('profileForm',   '/Account?handler=UpdateProfile',   'profile');
