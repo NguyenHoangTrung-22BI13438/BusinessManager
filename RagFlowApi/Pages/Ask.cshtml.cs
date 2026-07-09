@@ -89,7 +89,7 @@ public class AskModel : PageModel
 
     public async Task OnPostAskAsync(string sessionId, string? question, List<IFormFile>? files)
     {
-        var assistantId = await _userContext.EnsureAssistantAsync();
+        var datasetId = await _userContext.GetSharedDatasetIdAsync();
         var username = User.Identity?.Name ?? "";
         Sessions = await _conversations.ListByUsernameAsync(username);
         SessionId = sessionId;
@@ -112,7 +112,7 @@ public class AskModel : PageModel
         {
             var allowedCategories = await _userContext.GetAllowedCategoriesAsync();
             string completionJson = "";
-            try { completionJson = await _svc.AskQuestionAsync(assistantId, sessionId, question!, allowedCategories); }
+            try { completionJson = await _svc.AskQuestionAsync(datasetId, sessionId, question!, allowedCategories); }
             catch (Exception ex) { ErrorMessage = $"Something went wrong: {ex.Message}"; }
 
             Messages = await _conversations.LoadAsync(sessionId) ?? [];
@@ -142,7 +142,7 @@ public class AskModel : PageModel
 
     public async Task OnPostRegenerateAsync(string sessionId)
     {
-        var assistantId = await _userContext.EnsureAssistantAsync();
+        var datasetId = await _userContext.GetSharedDatasetIdAsync();
         var username = User.Identity?.Name ?? "";
         Sessions = await _conversations.ListByUsernameAsync(username);
         SessionId = sessionId;
@@ -160,7 +160,7 @@ public class AskModel : PageModel
 
         var allowedCategories = await _userContext.GetAllowedCategoriesAsync();
         string completionJson = "";
-        try { completionJson = await _svc.AskQuestionAsync(assistantId, sessionId, lastUser.Content, allowedCategories); }
+        try { completionJson = await _svc.AskQuestionAsync(datasetId, sessionId, lastUser.Content, allowedCategories); }
         catch (Exception ex) { ErrorMessage = $"Regeneration failed: {ex.Message}"; }
 
         Messages = CollapseRegenerations(await _conversations.LoadAsync(sessionId) ?? []);

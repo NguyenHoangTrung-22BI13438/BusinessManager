@@ -10,9 +10,9 @@ namespace RagFlowApi.Pages;
 [Authorize(Roles = "admin")]
 public class BenchmarkModel : PageModel
 {
-    private readonly BenchmarkService _bench;
-    private readonly UserContext      _ctx;
-    private readonly IWebHostEnvironment _env;
+    private readonly BenchmarkService   _bench;
+    private readonly UserContext        _ctx;
+    private readonly EvalQuestionLoader _loader;
     private readonly ILogger<BenchmarkModel> _log;
 
     // ── Bound form fields ─────────────────────────────────────────────────────
@@ -37,18 +37,18 @@ public class BenchmarkModel : PageModel
     public BenchmarkModel(
         BenchmarkService bench,
         UserContext ctx,
-        IWebHostEnvironment env,
+        EvalQuestionLoader loader,
         ILogger<BenchmarkModel> log)
     {
-        _bench = bench;
-        _ctx   = ctx;
-        _env   = env;
-        _log   = log;
+        _bench  = bench;
+        _ctx    = ctx;
+        _loader = loader;
+        _log    = log;
     }
 
     public async Task OnGetAsync()
     {
-        Questions = await LoadQuestionsAsync();
+        Questions = await _loader.LoadAsync();
         Scale     = await _bench.GetScaleMetricsAsync();
     }
 
@@ -57,7 +57,7 @@ public class BenchmarkModel : PageModel
     public async Task<IActionResult> OnPostSweepAsync()
     {
         ActiveSection = "sweep";
-        Questions     = await LoadQuestionsAsync();
+        Questions     = await _loader.LoadAsync();
         Scale         = await _bench.GetScaleMetricsAsync();
 
         if (Questions.Count == 0)
@@ -76,7 +76,7 @@ public class BenchmarkModel : PageModel
     public async Task<IActionResult> OnPostSemanticAsync()
     {
         ActiveSection = "semantic";
-        Questions     = await LoadQuestionsAsync();
+        Questions     = await _loader.LoadAsync();
         Scale         = await _bench.GetScaleMetricsAsync();
 
         var datasetId = await _ctx.GetSharedDatasetIdAsync();
@@ -90,7 +90,7 @@ public class BenchmarkModel : PageModel
     public async Task<IActionResult> OnPostChunkingAsync()
     {
         ActiveSection = "chunking";
-        Questions     = await LoadQuestionsAsync();
+        Questions     = await _loader.LoadAsync();
         Scale         = await _bench.GetScaleMetricsAsync();
 
         var datasetId = await _ctx.GetSharedDatasetIdAsync();
@@ -103,37 +103,11 @@ public class BenchmarkModel : PageModel
     public async Task<IActionResult> OnPostOcrAsync()
     {
         ActiveSection = "ocr";
-        Questions     = await LoadQuestionsAsync();
+        Questions     = await _loader.LoadAsync();
         Scale         = await _bench.GetScaleMetricsAsync();
 
         OcrResult = _bench.ComputeOcrMetrics(OcrReference ?? "", OcrHypothesis ?? "");
         return Page();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private async Task<List<EvalQuestion>> LoadQuestionsAsync()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(_env.WebRootPath, "eval_questions.json"),
-            Path.Combine(_env.ContentRootPath, "eval_questions.json")
-        };
-
-        foreach (var path in candidates)
-        {
-            if (!System.IO.File.Exists(path)) continue;
-            try
-            {
-                var text = await System.IO.File.ReadAllTextAsync(path);
-                return JsonSerializer.Deserialize<List<EvalQuestion>>(text,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Could not parse eval_questions.json at {P}", path);
-            }
-        }
-        return [];
-    }
 }

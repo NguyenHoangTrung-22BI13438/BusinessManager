@@ -144,7 +144,7 @@ public class UserStore
         public DateTime created_at    { get; set; }
     }
 
-    private static UserRecord ToRecord(UserRow r)
+    private UserRecord ToRecord(UserRow r)
     {
         var rec = new UserRecord
         {
@@ -179,7 +179,10 @@ public class UserStore
                     rec.Address       = p.Address;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Could not deserialize profile_json for user {User}", r.username);
+            }
         }
 
         return rec;

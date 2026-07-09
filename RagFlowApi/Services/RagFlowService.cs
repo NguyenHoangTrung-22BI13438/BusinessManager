@@ -23,9 +23,7 @@ public class RagFlowService
     private readonly HybridRetriever _retriever;
     private readonly string _apiKey;
     private readonly string _embeddingModel;
-    private readonly string _llmId;
     private readonly string _geminiApiKey;
-    private readonly string _defaultDatasetId;
     private readonly double _bm25Weight;
 
     private const string GeminiAnswerUrl =
@@ -49,9 +47,7 @@ public class RagFlowService
         _retriever = retriever;
         _apiKey = config["RagFlow:ApiKey"]!;
         _embeddingModel = config["RagFlow:EmbeddingModel"] ?? "bge-m3@Ollama";
-        _llmId = config["RagFlow:LlmId"] ?? "gemini-2.5-flash@Gemini";
         _geminiApiKey = config["Gemini:ApiKey"] ?? "";
-        _defaultDatasetId = config["RagFlow:DatasetId"] ?? "";
         _bm25Weight = double.TryParse(config["Retrieval:Bm25Weight"], out var w) ? w : 0.3;
     }
 
@@ -227,86 +223,57 @@ public class RagFlowService
         return result;
     }
 
-    // ── 7. Ask a question (retrieval + direct Gemini, bypasses RagFlow LLM) ──────
-    public async Task<string> AskQuestionAsync(
-        string assistantId, string sessionId, string question,
+    // ── 7a. Retrieve + generate without persisting — used by Evaluate ─────────
+    public async Task<string> GetAnswerAsync(
+        string datasetId,
+        string question,
         IReadOnlyList<string>? allowedCategories = null)
     {
-        // 1. Resolve dataset ID from the assistant config
-        var datasetId = await GetAssistantDatasetIdAsync(assistantId);
-
-        // 2. Retrieve relevant chunks via our own hybrid retriever (BM25 + vector)
-        //    allowedCategories=null means admin (no restriction); a list enforces department isolation.
         var chunks = await _retriever.RetrieveAsync(
             datasetId, question,
             bm25Weight: _bm25Weight,
             allowedCategories: allowedCategories);
 
-        // 3. Generate answer by calling Gemini directly
-        var contexts = chunks.Select(c => c.Content).ToList();
-        var answer = await CallGeminiForAnswerAsync(question, contexts);
+        var answer = await CallGeminiForAnswerAsync(
+            question, chunks.Select(c => c.Content).ToList());
 
-        // 4. Persist Q&A — load from file first so history survives restarts
-        var cacheKey = $"messages:{sessionId}";
-        if (!_cache.TryGetValue(cacheKey, out List<ChatMessage>? history) || history == null)
-            history = await _store.LoadAsync(sessionId) ?? [];
-        history.Add(new ChatMessage("user", question, StableMessageId("user", question + history.Count)));
-        var aiId = StableMessageId("assistant", answer + history.Count);
-        history.Add(new ChatMessage("assistant", answer, aiId) { Chunks = chunks });
-        _cache.Set(cacheKey, history, TimeSpan.FromHours(24));
-        await _store.SaveAsync(sessionId, history);
-
-        // 5. Return JSON in RagFlow completion format so all existing callers work
         return BuildCompletionJson(answer, chunks);
     }
 
-    private async Task<string> GetAssistantDatasetIdAsync(string assistantId)
+    // ── 7b. Ask a question, persist Q&A to ConversationStore ─────────────────
+    public async Task<string> AskQuestionAsync(
+        string datasetId, string sessionId, string question,
+        IReadOnlyList<string>? allowedCategories = null)
     {
-        try
-        {
-            var req = NewRequest(HttpMethod.Get, $"/api/v1/chats?id={assistantId}");
-            var res = await _http.SendAsync(req);
-            var body = await ReadBodyAsync(res);
-            using var doc = JsonDocument.Parse(body);
-            var first = doc.RootElement.GetProperty("data").EnumerateArray().First();
-            if (first.TryGetProperty("dataset_ids", out var ids) &&
-                ids.ValueKind == JsonValueKind.Array)
-            {
-                var id = ids.EnumerateArray().FirstOrDefault().GetString();
-                if (!string.IsNullOrWhiteSpace(id)) return id;
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning("Could not resolve dataset from assistant {Id}: {Msg}", assistantId, ex.Message);
-        }
-        return _defaultDatasetId;
+        var completionJson = await GetAnswerAsync(datasetId, question, allowedCategories);
+
+        // Deserialise the answer and chunks back out so we can persist them
+        var answer = ExtractAnswerFromJson(completionJson);
+        var chunks = ParseCompletionChunks(completionJson);
+
+        var cacheKey = $"messages:{sessionId}";
+        if (!_cache.TryGetValue(cacheKey, out List<ChatMessage>? history) || history == null)
+            history = await _store.LoadAsync(sessionId) ?? [];
+
+        history.Add(new ChatMessage("user", question,
+            StableMessageId("user", question + history.Count)));
+        var aiId = StableMessageId("assistant", answer + history.Count);
+        history.Add(new ChatMessage("assistant", answer, aiId) { Chunks = chunks });
+
+        _cache.Set(cacheKey, history, TimeSpan.FromHours(24));
+        await _store.SaveAsync(sessionId, history);
+
+        return completionJson;
     }
 
-    private async Task<List<RagChunk>> RetrieveChunksAsync(string datasetId, string question)
+    internal static string ExtractAnswerFromJson(string completionJson)
     {
         try
         {
-            var req = NewRequest(HttpMethod.Post, "/api/v1/retrieval");
-            req.Content = ToJson(new
-            {
-                question,
-                dataset_ids = new[] { datasetId },
-                similarity_threshold = 0.2,
-                top_n = 8
-            });
-            var res = await _http.SendAsync(req);
-            var body = await ReadBodyAsync(res);
-            using var doc = JsonDocument.Parse(body);
-            var data = doc.RootElement.GetProperty("data");
-            if (data.TryGetProperty("chunks", out var chunksEl))
-                return ParseChunkArray(chunksEl);
+            using var doc = JsonDocument.Parse(completionJson);
+            return doc.RootElement.GetProperty("data").GetProperty("answer").GetString() ?? "";
         }
-        catch (Exception ex)
-        {
-            _log.LogWarning("Retrieval failed: {Msg}", ex.Message);
-        }
-        return [];
+        catch { return ""; }
     }
 
     public async Task<string> CallGeminiForAnswerAsync(string question, List<string> contexts)
@@ -868,8 +835,6 @@ public class RagFlowService
         return await ReadBodyAsync(res);
     }
     // ── Rename a chat session ─────────────────────────────────────────────────────
-    // Add this method to RagFlowService.cs, just before the final closing brace of the class.
-
     public async Task RenameSessionAsync(string assistantId, string sessionId, string newName)
     {
         var req = NewRequest(HttpMethod.Put,

@@ -9,7 +9,7 @@ namespace RagFlowApi.Pages;
 [Authorize]
 public class DocumentChunksModel : PageModel
 {
-    private readonly VectorChunkStore       _vectorStore;
+    private readonly ElasticsearchChunkStore       _chunkStore;
     private readonly OllamaEmbeddingClient  _embedder;
     private readonly UserContext            _userContext;
     private readonly IWebHostEnvironment    _env;
@@ -29,12 +29,12 @@ public class DocumentChunksModel : PageModel
          System.IO.File.Exists(Path.Combine(_env.WebRootPath, "doc-cache", DocumentId + ".pdf")));
 
     public DocumentChunksModel(
-        VectorChunkStore vectorStore,
+        ElasticsearchChunkStore chunkStore,
         OllamaEmbeddingClient embedder,
         UserContext userContext,
         IWebHostEnvironment env)
     {
-        _vectorStore = vectorStore;
+        _chunkStore = chunkStore;
         _embedder    = embedder;
         _userContext  = userContext;
         _env         = env;
@@ -52,13 +52,13 @@ public class DocumentChunksModel : PageModel
             return BadRequest();
 
         var datasetId = await _userContext.GetSharedDatasetIdAsync();
-        var all = await _vectorStore.GetByDatasetAsync(datasetId);
+        var all = await _chunkStore.GetByDatasetAsync(datasetId);
         var existing = all.FirstOrDefault(c => c.Id == ChunkId && c.DocumentId == DocId);
         if (existing is null) return BadRequest();
 
         var embedding = await _embedder.EmbedAsync(NewContent);
         var updated = existing with { Content = NewContent, Embedding = embedding };
-        await _vectorStore.AddRangeAsync([updated]);
+        await _chunkStore.AddRangeAsync([updated]);
 
         return RedirectToPage(new { id = DocId });
     }
@@ -71,7 +71,7 @@ public class DocumentChunksModel : PageModel
         Search     = search;
 
         var datasetId = await _userContext.GetSharedDatasetIdAsync();
-        var all = await _vectorStore.GetByDatasetAsync(datasetId);
+        var all = await _chunkStore.GetByDatasetAsync(datasetId);
         var docChunks = all.Where(c => c.DocumentId == id).ToList();
 
         DocumentName = docChunks.FirstOrDefault()?.DocumentName ?? "Document";

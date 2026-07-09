@@ -9,7 +9,7 @@ namespace RagFlowApi.Pages;
 [Authorize]
 public class DocumentsModel : PageModel
 {
-    private readonly VectorChunkStore   _vectorStore;
+    private readonly ElasticsearchChunkStore   _chunkStore;
     private readonly IngestionChannel   _channel;
     private readonly IngestionJobStore  _store;
     private readonly IngestionPipeline  _pipeline;
@@ -26,7 +26,7 @@ public class DocumentsModel : PageModel
     public string CurrentDir  { get; private set; } = "asc";
 
     public DocumentsModel(
-        VectorChunkStore vectorStore,
+        ElasticsearchChunkStore chunkStore,
         IngestionChannel channel,
         IngestionJobStore store,
         UserContext userContext,
@@ -36,7 +36,7 @@ public class DocumentsModel : PageModel
         IWebHostEnvironment env,
         ILogger<DocumentsModel> log)
     {
-        _vectorStore    = vectorStore;
+        _chunkStore    = chunkStore;
         _channel        = channel;
         _store          = store;
         _userContext    = userContext;
@@ -55,7 +55,7 @@ public class DocumentsModel : PageModel
         if (User.IsInRole("admin"))
         {
             var datasetId = await _userContext.EnsureDatasetAsync();
-            var chunks = await _vectorStore.GetByDatasetAsync(datasetId);
+            var chunks = await _chunkStore.GetByDatasetAsync(datasetId);
             var docs = chunks
                 .GroupBy(c => c.DocumentId)
                 .Select(g => new DocumentItem(
@@ -71,7 +71,7 @@ public class DocumentsModel : PageModel
                     Category:   g.First().Category))
                 .ToList();
             Documents       = SortDocuments(docs, CurrentSort, CurrentDir);
-            KnownCategories = await _vectorStore.GetCategoriesAsync();
+            KnownCategories = await _chunkStore.GetCategoriesAsync();
         }
         else
         {
@@ -101,7 +101,7 @@ public class DocumentsModel : PageModel
             var cacheDir = Path.Combine(_env.WebRootPath, "doc-cache");
             foreach (var docId in documentIds)
             {
-                try { await _vectorStore.DeleteByDocumentAsync(docId); } catch { }
+                try { await _chunkStore.DeleteByDocumentAsync(docId); } catch { }
                 if (Directory.Exists(cacheDir))
                     foreach (var f in Directory.GetFiles(cacheDir, docId + ".*"))
                         try { System.IO.File.Delete(f); } catch { }

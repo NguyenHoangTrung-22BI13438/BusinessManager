@@ -84,13 +84,6 @@ public class DocxFormFillerService
             : "filled-form.docx";
     }
 
-    private static readonly string[] SofficeCandidates =
-    [
-        @"C:\Program Files\LibreOffice\program\soffice.exe",
-        @"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-        "soffice"
-    ];
-
     // ── Form preview (PDF for docx, HTML for txt) ─────────────────────────────
     public async Task<(byte[] Data, string ContentType)?> GetPreviewAsync(string templateId)
     {
@@ -111,44 +104,12 @@ public class DocxFormFillerService
         if (File.Exists(pdfCache))
             return (await File.ReadAllBytesAsync(pdfCache), "application/pdf");
 
-        var pdfBytes = await ConvertDocxToPdfAsync(path);
+        var docxBytes = await File.ReadAllBytesAsync(path);
+        var pdfBytes = await LibreOfficeConverter.ConvertToPdfAsync(docxBytes, Path.GetFileName(path));
         if (pdfBytes is null) return null;
 
         await File.WriteAllBytesAsync(pdfCache, pdfBytes);
         return (pdfBytes, "application/pdf");
-    }
-
-    private static async Task<byte[]?> ConvertDocxToPdfAsync(string docxPath)
-    {
-        var sofficePath = SofficeCandidates.FirstOrDefault(File.Exists) ?? "soffice";
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        var tempDocx = Path.Combine(tempDir, "form.docx");
-        try
-        {
-            File.Copy(docxPath, tempDocx, overwrite: true);
-            var loProfile = "file:///" + tempDir.Replace('\\', '/') + "/lo-profile";
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = sofficePath,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            psi.ArgumentList.Add("--headless");
-            psi.ArgumentList.Add($"-env:UserInstallation={loProfile}");
-            psi.ArgumentList.Add("--convert-to");
-            psi.ArgumentList.Add("pdf");
-            psi.ArgumentList.Add("--outdir");
-            psi.ArgumentList.Add(tempDir);
-            psi.ArgumentList.Add(tempDocx);
-            using var proc = System.Diagnostics.Process.Start(psi)!;
-            await proc.WaitForExitAsync();
-            var pdf = Path.Combine(tempDir, "form.pdf");
-            return File.Exists(pdf) ? await File.ReadAllBytesAsync(pdf) : null;
-        }
-        catch { return null; }
-        finally { try { Directory.Delete(tempDir, recursive: true); } catch { } }
     }
 
     // ── Detect fields — dispatches by file type ───────────────────────────────
@@ -231,14 +192,11 @@ public class DocxFormFillerService
                 : f with { Source = "ai" };
         }).ToList();
 
-        // Step 2 — For fields still empty, ask RAGFlow.
+        // Step 2 — For fields still empty, ask the LLM via the knowledge base.
         var needsAi = result.Where(f => string.IsNullOrWhiteSpace(f.SuggestedValue)).ToList();
         if (needsAi.Count == 0) return result;
 
-        var assistantId = await _userContext.EnsureAssistantAsync();
-        var sessionId   = await _ragflow.CreateSessionAsync(
-            assistantId, $"__formfill_{Guid.NewGuid():N}");
-        if (sessionId == null) return result;
+        var datasetId = await _userContext.GetSharedDatasetIdAsync();
 
         try
         {
@@ -251,8 +209,8 @@ public class DocxFormFillerService
                 $"Fields:\n{fieldList}\n\n" +
                 "Example: {\"field_key\": \"value\"}";
 
-            var completionJson = await _ragflow.AskQuestionAsync(assistantId, sessionId, question);
-            var answerText     = ExtractAnswerText(completionJson);
+            var completionJson = await _ragflow.GetAnswerAsync(datasetId, question);
+            var answerText     = RagFlowService.ExtractAnswerFromJson(completionJson);
             var jsonMatch      = Regex.Match(answerText, @"\{[\s\S]*\}");
 
             if (jsonMatch.Success)
@@ -260,7 +218,7 @@ public class DocxFormFillerService
                 using var jdoc = JsonDocument.Parse(jsonMatch.Value);
                 result = result.Select(f =>
                 {
-                    if (!string.IsNullOrWhiteSpace(f.SuggestedValue)) return f;   // already filled
+                    if (!string.IsNullOrWhiteSpace(f.SuggestedValue)) return f;
                     var val = jdoc.RootElement.TryGetProperty(f.Key, out var v)
                               ? v.GetString() ?? "" : "";
                     return string.IsNullOrWhiteSpace(val) ? f : f with { SuggestedValue = val.Trim(), Source = "ai" };
@@ -269,11 +227,7 @@ public class DocxFormFillerService
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Form-fill RAG suggestion failed");
-        }
-        finally
-        {
-            try { await _ragflow.DeleteSessionAsync(assistantId, sessionId!); } catch { }
+            _log.LogWarning(ex, "Form-fill AI suggestion failed");
         }
 
         return result;
@@ -986,16 +940,6 @@ public class DocxFormFillerService
             if (File.Exists(p)) return p;
         }
         throw new FileNotFoundException("Template not found or expired.");
-    }
-
-    private static string ExtractAnswerText(string completionJson)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(completionJson);
-            return doc.RootElement.GetProperty("data").GetProperty("answer").GetString() ?? "";
-        }
-        catch { return ""; }
     }
 
     // "Tháng_ký" → "Tháng ký", "Pháp_nhân_in_hoa" → "Pháp nhân in hoa"

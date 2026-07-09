@@ -69,38 +69,12 @@ public sealed class IngestionWorker : BackgroundService
     private readonly IngestionJobStore       _store;
     private readonly IServiceScopeFactory    _scopes;
     private readonly ILogger<IngestionWorker> _log;
-    private readonly string                  _vllmBase;
 
     public IngestionWorker(
         IngestionChannel channel, IngestionJobStore store,
-        IServiceScopeFactory scopes, ILogger<IngestionWorker> log,
-        IConfiguration config)
+        IServiceScopeFactory scopes, ILogger<IngestionWorker> log)
     {
-        _channel  = channel; _store = store; _scopes = scopes; _log = log;
-        _vllmBase = config["DotsOcr:BaseUrl"]?.TrimEnd('/') ?? "";
-    }
-
-    // Returns true when VLLM answers /v1/models within 5 s; false otherwise.
-    private async Task<bool> VllmIsReachableAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_vllmBase)) return false;
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var res = await http.GetAsync($"{_vllmBase}/v1/models");
-            return res.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    // True when a job will hit the VLLM OCR path.
-    private static bool NeedsVllm(IngestionJob job)
-    {
-        var ext = Path.GetExtension(job.FileName).ToLowerInvariant();
-        return ext == ".pdf" || job.ContentType.StartsWith("image/");
+        _channel = channel; _store = store; _scopes = scopes; _log = log;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)

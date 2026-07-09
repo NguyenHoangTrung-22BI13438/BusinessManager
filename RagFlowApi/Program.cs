@@ -1,4 +1,3 @@
-using Dapper;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -27,8 +26,7 @@ builder.Services.AddHttpClient<OllamaEmbeddingClient>(client =>
 });
 builder.Services.AddScoped<IParser, DotsOcrParser>();
 builder.Services.AddSingleton<LayoutChunker>();
-builder.Services.AddSingleton<VectorChunkStore>();
-builder.Services.AddSingleton<BM25Scorer>();
+builder.Services.AddSingleton<ElasticsearchChunkStore>();
 builder.Services.AddScoped<HybridRetriever>();
 builder.Services.AddScoped<IngestionPipeline>();
 builder.Services.AddScoped<RagasService>();
@@ -42,9 +40,7 @@ builder.Services.AddSingleton<FormLibraryStore>();
 builder.Services.AddSingleton<ConversationStore>();
 builder.Services.AddScoped<DocxFormFillerService>();
 builder.Services.AddScoped<BenchmarkService>();
-
-// ── Startup migration: embed existing RagFlow chunks into local vector store ──
-builder.Services.AddHostedService<VectorStoreMigrationService>();
+builder.Services.AddScoped<EvalQuestionLoader>();
 
 // ── Async ingestion queue ─────────────────────────────────────────────────────
 builder.Services.AddSingleton<IngestionChannel>();
@@ -112,7 +108,7 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseStaticFiles();
-app.MapGet("/", () => Results.Redirect("/Login"));  // ← add this
+app.MapGet("/", () => Results.Redirect("/Login"));
 app.UseRouting();
 app.UseAuthentication();   // reads the auth cookie on every request
 app.UseAuthorization();    // enforces [Authorize] attributes on page models

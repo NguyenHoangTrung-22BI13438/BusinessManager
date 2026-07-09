@@ -16,8 +16,7 @@ public class BenchmarkService
     private readonly HybridRetriever _retriever;
     private readonly RagFlowService  _ragflow;
     private readonly RagasService    _ragas;
-    private readonly VectorChunkStore _store;
-    private readonly IWebHostEnvironment _env;
+    private readonly ElasticsearchChunkStore _store;
     private readonly ILogger<BenchmarkService> _log;
 
     // Weights tried in the sweep
@@ -27,15 +26,13 @@ public class BenchmarkService
         HybridRetriever retriever,
         RagFlowService  ragflow,
         RagasService    ragas,
-        VectorChunkStore store,
-        IWebHostEnvironment env,
+        ElasticsearchChunkStore store,
         ILogger<BenchmarkService> log)
     {
         _retriever = retriever;
         _ragflow   = ragflow;
         _ragas     = ragas;
         _store     = store;
-        _env       = env;
         _log       = log;
     }
 
@@ -261,8 +258,7 @@ public class BenchmarkService
         var uniqueDatasets = allChunks.Select(c => c.DatasetId).Distinct().Count();
         var avgChars      = totalChunks == 0 ? 0 : allChunks.Average(c => c.Content.Length);
 
-        var path      = Path.Combine(_env.ContentRootPath, "vector_store.json");
-        long fileSize = File.Exists(path) ? new FileInfo(path).Length : 0;
+        long fileSize = await _store.GetStoreSizeBytesAsync();
 
         // Rough latency estimate: O(N) cosine scan on 1024-dim vectors (~0.01 ms/chunk)
         double estMs = totalChunks * 0.01;

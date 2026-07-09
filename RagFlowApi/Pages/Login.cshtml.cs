@@ -50,7 +50,6 @@ public class LoginModel : PageModel
     /// Optional flag passed as a query parameter from the Register page
     /// to indicate successful registration.
     /// </param>
-    //public void OnGet(bool registered = false)
     public IActionResult OnGet(bool registered = false)
     {
         // Already authenticated — go straight to the app
@@ -85,14 +84,14 @@ public class LoginModel : PageModel
         if (record is null)
         {
             _log.LogWarning("Failed login attempt: username '{User}' does not exist", Username);
-            ErrorMessage = "Username does not exist.";
+            ErrorMessage = "Invalid username or password.";
             return Page();
         }
 
         if (!_store.VerifyPassword(record, Password))
         {
             _log.LogWarning("Failed login attempt: wrong password for username '{User}'", Username);
-            ErrorMessage = "Wrong password.";
+            ErrorMessage = "Invalid username or password.";
             return Page();
         }
 
@@ -102,7 +101,7 @@ public class LoginModel : PageModel
         {
             new(ClaimTypes.Name,    record.Username),
             new("DisplayName",      record.DisplayName),
-            new(ClaimTypes.Role,    record.IsAdmin ? "admin" : "user")  // ← add this
+            new(ClaimTypes.Role,    record.IsAdmin ? "admin" : "user")
         };
 
         var identity = new ClaimsIdentity(claims, "Cookies");
@@ -114,7 +113,6 @@ public class LoginModel : PageModel
             {
                 IsPersistent = true,    // survives browser close
                 ExpiresUtc = DateTimeOffset.UtcNow.AddDays(7)
-                //ExpiresUtc = DateTimeOffset.UtcNow.AddSeconds(10)
             });
 
         _log.LogInformation("User '{User}' signed in.", record.Username);

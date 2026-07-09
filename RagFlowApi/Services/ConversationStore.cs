@@ -7,15 +7,17 @@ namespace RagFlowApi.Services;
 public class ConversationStore
 {
     private readonly AppDbContext _db;
+    private readonly ILogger<ConversationStore> _log;
 
     private static readonly JsonSerializerOptions _json = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public ConversationStore(AppDbContext db)
+    public ConversationStore(AppDbContext db, ILogger<ConversationStore> log)
     {
-        _db = db;
+        _db  = db;
+        _log = log;
     }
 
     // ── Conversation history ──────────────────────────────────────────────────
@@ -72,7 +74,11 @@ public class ConversationStore
                 return new ChatMessage(r.role, r.content, r.id) { Chunks = chunks };
             }).ToList();
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "LoadAsync failed for session {Id}", sessionId);
+            return null;
+        }
     }
 
     // ── Session index ─────────────────────────────────────────────────────────
