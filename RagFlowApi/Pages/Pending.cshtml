@@ -52,6 +52,8 @@
                     <tr>
                         <th>File</th>
                         <th>Submitted by</th>
+                        <th>Phòng ban</th>
+                        <th>Loại</th>
                         <th>Date</th>
                         <th></th>
                     </tr>
@@ -68,6 +70,12 @@
                         </td>
                         <td style="color:var(--text-muted);font-size:13px">
                             @doc.UploadedBy
+                        </td>
+                        <td style="color:var(--text-muted);font-size:13px">
+                            @(string.IsNullOrEmpty(doc.Department) ? "—" : doc.Department)
+                        </td>
+                        <td style="color:var(--text-muted);font-size:13px">
+                            @(string.IsNullOrEmpty(doc.DocType) ? "—" : doc.DocType)
                         </td>
                         <td class="doc-date">
                             @doc.UploadedAt.ToLocalTime().ToString("MMM dd, HH:mm")

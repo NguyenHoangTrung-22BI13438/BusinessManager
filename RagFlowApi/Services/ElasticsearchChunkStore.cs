@@ -86,6 +86,25 @@ public sealed class ElasticsearchChunkStore
         });
     }
 
+    private static readonly HashSet<string> _editableFields =
+        ["department", "docType", "scope", "status"];
+
+    public async Task UpdateDocumentFieldAsync(string documentId, string field, string value)
+    {
+        if (!_editableFields.Contains(field))
+            throw new ArgumentException($"Field '{field}' is not editable.");
+
+        await _es.UpdateByQueryAsync(new Elastic.Clients.Elasticsearch.UpdateByQueryRequest(Idx)
+        {
+            Query  = new TermQuery("documentId") { Value = documentId },
+            Script = new Script(new InlineScript(
+                $"ctx._source.{field} = params.v")
+            {
+                Params = new Dictionary<string, object> { { "v", value } }
+            })
+        });
+    }
+
     // ── Read ──────────────────────────────────────────────────────────────────
 
     public async Task<List<StoredChunk>> GetByDatasetAsync(

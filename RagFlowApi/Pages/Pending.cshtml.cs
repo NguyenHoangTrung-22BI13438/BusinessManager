@@ -42,7 +42,11 @@ public class PendingModel : PageModel
 
         _jobs.Add(new JobStatus { JobId = jobId, FileName = doc.FileName });
         var job = new IngestionJob(
-            jobId, datasetId, bytes, doc.FileName, doc.ContentType);
+            jobId, datasetId, bytes, doc.FileName, doc.ContentType,
+            Department: doc.Department,
+            DocType:    doc.DocType,
+            Scope:      "Toàn công ty",
+            Status:     "Đang hiệu lực");
 
         if (!_channel.Writer.TryWrite(job)) await _channel.Writer.WriteAsync(job);
 

@@ -17,7 +17,7 @@
     --error: #f76f6f;
     --radius: 12px;
     --radius-sm: 8px;
-    --navbar-h: 60px;
+    --nav-w: 220px;
     --sidebar-w: 260px;
     --font: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'DM Mono', monospace;
@@ -41,68 +41,265 @@ body {
     line-height: 1.6;
     font-size: 15px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    overflow: hidden;
 }
 
-/* ── Navbar ──────────────────────────────────────────────────────────────── */
-.navbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 24px;
-    height: var(--navbar-h);
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-card);
+/* ── Navigation sidebar ──────────────────────────────────────────────────── */
+.nav-sidebar {
+    width: var(--nav-w);
     flex-shrink: 0;
+    height: 100%;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     z-index: 100;
 }
 
-.nav-brand {
+.nav-brand-row {
     display: flex;
     align-items: center;
     gap: 10px;
+    padding: 18px 16px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
-.nav-logo {
+.nav-logo-icon {
     font-size: 22px;
     color: var(--accent);
 }
 
-.nav-title {
+.nav-title-text {
     font-size: 15px;
     font-weight: 600;
     letter-spacing: .02em;
+    color: var(--text-primary);
 }
 
-.nav-links {
+.nav-links-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 8px;
     display: flex;
-    gap: 4px;
+    flex-direction: column;
+    gap: 2px;
 }
 
-.nav-link {
-    padding: 6px 14px;
+.nav-section-header {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--text-subtle);
+    padding: 8px 12px 4px;
+}
+
+.nav-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 4px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 9px 12px;
     border-radius: var(--radius-sm);
     text-decoration: none;
+    color: var(--text-muted);
     font-size: 14px;
     font-weight: 500;
-    color: var(--text-muted);
     transition: background .15s, color .15s;
+    position: relative;
 }
 
-    .nav-link:hover {
-        background: var(--bg-input);
-        color: var(--text-primary);
-    }
+.nav-item:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
 
-.nav-link--subtle {
+.nav-item--active {
+    background: rgba(79, 110, 247, .13);
+    color: var(--accent);
+}
+
+.nav-item--active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--accent);
+}
+
+.nav-item-icon {
+    font-size: 15px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+    opacity: .85;
+}
+
+.nav-item-label {
+    flex: 1;
+}
+
+.nav-badge {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    min-width: 18px;
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* ── User section (sidebar footer) ──────────────────────────────────────── */
+.nav-user-section {
+    padding: 10px 8px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.nav-user-section .nav-user-btn {
+    width: 100%;
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    justify-content: flex-start;
     font-size: 13px;
 }
 
-/* ── Page body (fills remaining height) ─────────────────────────────────── */
+.nav-user-section .nav-user-btn:hover,
+.nav-user-section .nav-user-btn[aria-expanded="true"] {
+    background: var(--bg-input);
+    border-color: var(--border);
+}
+
+.nav-user-section .nav-user-chevron {
+    margin-left: auto;
+}
+
+/* Dropdown opens upward for sidebar footer */
+.nav-user-dropdown--up {
+    top: auto !important;
+    bottom: calc(100% + 8px);
+    right: auto;
+    left: 0;
+    width: 100%;
+}
+
+/* ── Page body (fills remaining width) ──────────────────────────────────── */
 .page-body {
     flex: 1;
     overflow: hidden;
     display: flex;
+}
+
+/* ── Sidebar toggle button ───────────────────────────────────────────────── */
+.nav-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background .15s, color .15s;
+}
+
+.nav-toggle-btn:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+/* ── Collapsed sidebar ───────────────────────────────────────────────────── */
+.nav-sidebar {
+    transition: width .2s ease;
+}
+
+.nav-sidebar--collapsed {
+    width: 56px;
+}
+
+.nav-sidebar--collapsed .nav-title-text,
+.nav-sidebar--collapsed .nav-item-label,
+.nav-sidebar--collapsed .nav-section-header,
+.nav-sidebar--collapsed .nav-divider,
+.nav-sidebar--collapsed .nav-badge,
+.nav-sidebar--collapsed .nav-user-name,
+.nav-sidebar--collapsed .nav-user-chevron {
+    display: none;
+}
+
+.nav-sidebar--collapsed .nav-brand-row {
+    justify-content: center;
+    gap: 0;
+    padding: 18px 0 16px;
+    flex-direction: column-reverse;
+    align-items: center;
+}
+
+.nav-sidebar--collapsed .nav-logo-icon {
+    font-size: 20px;
+    margin-top: 4px;
+}
+
+.nav-sidebar--collapsed .nav-links-list {
+    padding: 10px 6px;
+    align-items: center;
+}
+
+.nav-sidebar--collapsed .nav-item {
+    justify-content: center;
+    padding: 10px 0;
+    width: 44px;
+}
+
+.nav-sidebar--collapsed .nav-item-icon {
+    width: auto;
+    font-size: 17px;
+}
+
+.nav-sidebar--collapsed .nav-item--active::before {
+    top: 50%;
+    bottom: auto;
+    height: 24px;
+    transform: translateY(-50%);
+}
+
+.nav-sidebar--collapsed .nav-user-section {
+    padding: 10px 6px;
+    display: flex;
+    justify-content: center;
+}
+
+.nav-sidebar--collapsed .nav-user-btn {
+    width: 44px;
+    padding: 8px 0;
+    justify-content: center;
+}
+
+/* ── No-sidebar layout (login page) ─────────────────────────────────────── */
+.layout--no-sidebar .nav-sidebar {
+    display: none;
+}
+
+.layout--no-sidebar .page-body {
+    flex-direction: column;
 }
 
 /* ── Card (kept for any future non-chat pages) ──────────────────────────── */

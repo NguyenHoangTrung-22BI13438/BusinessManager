@@ -11,4 +11,6 @@ public class PendingDocument
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
     public string FilePath { get; set; } = string.Empty; // absolute path to stored bytes
     public PendingStatus Status { get; set; } = PendingStatus.Pending;
+    public string Department { get; set; } = string.Empty;
+    public string DocType { get; set; } = string.Empty;
 }

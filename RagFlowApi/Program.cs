@@ -99,6 +99,33 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// ── Schema migration: add tag columns to pending_documents if absent ──────────
+{
+    await using var conn = dbContext.CreateConnection();
+    await conn.OpenAsync();
+
+    async Task AddColumnIfMissing(string column, string definition)
+    {
+        using var check = conn.CreateCommand();
+        check.CommandText = @"
+            SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME  = 'pending_documents'
+              AND COLUMN_NAME = @col";
+        check.Parameters.AddWithValue("@col", column);
+        var exists = Convert.ToInt32(await check.ExecuteScalarAsync()) > 0;
+        if (!exists)
+        {
+            using var alter = conn.CreateCommand();
+            alter.CommandText = $"ALTER TABLE pending_documents ADD COLUMN {definition}";
+            await alter.ExecuteNonQueryAsync();
+        }
+    }
+
+    await AddColumnIfMissing("department", "department VARCHAR(100) NOT NULL DEFAULT ''");
+    await AddColumnIfMissing("doc_type",   "doc_type   VARCHAR(100) NOT NULL DEFAULT ''");
+}
+
 // ── 4. Middleware ─────────────────────────────────────────────────────────────
 app.UseSwagger();
 app.UseSwaggerUI(c =>

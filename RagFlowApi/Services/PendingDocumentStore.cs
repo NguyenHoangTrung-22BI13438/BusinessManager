@@ -59,7 +59,9 @@ public class PendingDocumentStore
 
     // ── Write ─────────────────────────────────────────────────────────────────
 
-    public async Task<PendingDocument> AddAsync(string username, IFormFile file)
+    public async Task<PendingDocument> AddAsync(
+        string username, IFormFile file,
+        string department = "", string docType = "")
     {
         var ext      = Path.GetExtension(file.FileName);
         var filePath = Path.Combine(_fileDir, Guid.NewGuid().ToString("N") + ext);
@@ -72,16 +74,21 @@ public class PendingDocumentStore
             FileName    = file.FileName,
             ContentType = file.ContentType ?? "application/octet-stream",
             UploadedBy  = username,
-            FilePath    = filePath
+            FilePath    = filePath,
+            Department  = department.Trim(),
+            DocType     = docType.Trim()
         };
 
         await using var conn = _db.CreateConnection();
         await conn.ExecuteAsync(@"
             INSERT INTO pending_documents
-                (id, submitted_by, file_name, content_type, storage_key, file_path, submitted_at, status)
+                (id, submitted_by, file_name, content_type, storage_key, file_path,
+                 submitted_at, status, department, doc_type)
             VALUES
-                (@Id, @UploadedBy, @FileName, @ContentType, '', @FilePath, UTC_TIMESTAMP(), 'Pending')",
-            new { doc.Id, doc.UploadedBy, doc.FileName, doc.ContentType, doc.FilePath });
+                (@Id, @UploadedBy, @FileName, @ContentType, '', @FilePath,
+                 UTC_TIMESTAMP(), 'Pending', @Department, @DocType)",
+            new { doc.Id, doc.UploadedBy, doc.FileName, doc.ContentType,
+                  doc.FilePath, doc.Department, doc.DocType });
 
         return doc;
     }
@@ -111,6 +118,8 @@ public class PendingDocumentStore
         public string   file_path    { get; set; } = "";
         public DateTime submitted_at { get; set; }
         public string   status       { get; set; } = "Pending";
+        public string   department   { get; set; } = "";
+        public string   doc_type     { get; set; } = "";
     }
 
     private static PendingDocument ToDoc(PendingRow r) =>
@@ -122,6 +131,8 @@ public class PendingDocumentStore
             UploadedBy  = r.submitted_by,
             UploadedAt  = r.submitted_at,
             FilePath    = r.file_path,
-            Status      = Enum.TryParse<PendingStatus>(r.status, out var s) ? s : PendingStatus.Pending
+            Status      = Enum.TryParse<PendingStatus>(r.status, out var s) ? s : PendingStatus.Pending,
+            Department  = r.department,
+            DocType     = r.doc_type
         };
 }

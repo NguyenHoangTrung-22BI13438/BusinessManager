@@ -167,6 +167,32 @@
     opacity: .8;
 }
 
+select.doc-status-select {
+    appearance: none;
+    cursor: pointer;
+    outline: none;
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: .04em;
+}
+
+select.doc-tag-select {
+    appearance: none;
+    cursor: pointer;
+    outline: none;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 2px 0;
+    width: 100%;
+}
+
+select.doc-tag-select:hover {
+    color: var(--accent);
+}
+
 .doc-actions {
     text-align: right;
     white-space: nowrap;

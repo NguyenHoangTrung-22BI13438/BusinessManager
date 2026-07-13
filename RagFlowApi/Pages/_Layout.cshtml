@@ -5,70 +5,98 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] — RAGFlow</title>
-    <link rel="stylesheet" href="/css/base.css" />
-    <link rel="stylesheet" href="/css/account.css" />
-    <link rel="stylesheet" href="/css/chat.css" />
-    <link rel="stylesheet" href="/css/documents.css" />
-    <link rel="stylesheet" href="/css/chunks.css" />
+    <link rel="stylesheet" href="/css/base.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/css/account.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/css/chat.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/css/documents.css" asp-append-version="true" />
+    <link rel="stylesheet" href="/css/chunks.css" asp-append-version="true" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body>
-    <nav class="navbar">
-        <div class="nav-brand">
-            <span class="nav-logo">⬡</span>
-            <span class="nav-title">RAGFlow</span>
-        </div>
-        <div class="nav-links">
+@{
+    var isAuth = Context.User.Identity?.IsAuthenticated == true;
+    var isAdmin = Context.User.IsInRole("admin");
+    var curPath = Context.Request.Path.Value?.ToLower() ?? "";
+    var displayName = Context.User.FindFirst("DisplayName")?.Value
+                      ?? Context.User.Identity?.Name
+                      ?? "User";
+    var initials = string.IsNullOrWhiteSpace(displayName) ? "U" : displayName[0].ToString().ToUpper();
+}
+<body class="@(isAuth ? "" : "layout--no-sidebar")">
 
-            @if (Context.User.Identity?.IsAuthenticated == true)
-            {
-                <a href="/Ask"       class="nav-link">Chat</a>
-                <a href="/Documents" class="nav-link">Documents</a>
-                <a href="/FillForm"  class="nav-link">Fill Form</a>
-                @* Admin-only links *@
-                @if (Context.User.IsInRole("admin"))
+    <aside class="nav-sidebar" id="navSidebar">
+        <div class="nav-brand-row">
+            <button class="nav-toggle-btn" id="navToggleBtn" title="Toggle sidebar" aria-label="Toggle sidebar">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <rect y="2" width="16" height="2" rx="1"/>
+                    <rect y="7" width="16" height="2" rx="1"/>
+                    <rect y="12" width="16" height="2" rx="1"/>
+                </svg>
+            </button>
+            <span class="nav-logo-icon">⬡</span>
+            <span class="nav-title-text">RAGFlow</span>
+        </div>
+
+        @if (isAuth)
+        {
+            <nav class="nav-links-list">
+                <a href="/Ask" class="nav-item @(curPath.StartsWith("/ask") ? "nav-item--active" : "")">
+                    <span class="nav-item-icon">💬</span>
+                    <span class="nav-item-label">Chat</span>
+                </a>
+                <a href="/Documents" class="nav-item @(curPath.StartsWith("/documents") ? "nav-item--active" : "")">
+                    <span class="nav-item-icon">📄</span>
+                    <span class="nav-item-label">Documents</span>
+                </a>
+                <a href="/FillForm" class="nav-item @(curPath.StartsWith("/fillform") ? "nav-item--active" : "")">
+                    <span class="nav-item-icon">📋</span>
+                    <span class="nav-item-label">Fill Form</span>
+                </a>
+
+                @if (isAdmin)
                 {
                     var pendingCount = await PendingStore.GetPendingCountAsync();
-                    <a href="/Pending" class="nav-link" style="position:relative">
-                        Review
+                    <div class="nav-divider"></div>
+                    <div class="nav-section-header">Admin</div>
+
+                    <a href="/Pending" class="nav-item @(curPath.StartsWith("/pending") ? "nav-item--active" : "")">
+                        <span class="nav-item-icon">🔎</span>
+                        <span class="nav-item-label">Review</span>
                         @if (pendingCount > 0)
                         {
-                            <span style="
-                            position:absolute; top:-6px; right:-10px;
-                            background:var(--accent); color:#fff;
-                            border-radius:999px; font-size:10px;
-                            padding:1px 5px; font-weight:600">@pendingCount</span>
+                            <span class="nav-badge">@pendingCount</span>
                         }
                     </a>
-                    <a href="/Register"  class="nav-link">Users</a>
-                    <a href="/swagger" class="nav-link nav-link--subtle">API</a>
-                    <a href="/Evaluate"  class="nav-link">Evaluate</a>
-                    <a href="/Benchmark" class="nav-link">Benchmark</a>
+                    <a href="/Register" class="nav-item @(curPath.StartsWith("/register") ? "nav-item--active" : "")">
+                        <span class="nav-item-icon">👤</span>
+                        <span class="nav-item-label">Users</span>
+                    </a>
+                    <a href="/swagger" class="nav-item">
+                        <span class="nav-item-icon">⚙</span>
+                        <span class="nav-item-label">API</span>
+                    </a>
+                    <a href="/Evaluate" class="nav-item @(curPath.StartsWith("/evaluate") ? "nav-item--active" : "")">
+                        <span class="nav-item-icon">📊</span>
+                        <span class="nav-item-label">Evaluate</span>
+                    </a>
+                    <a href="/Benchmark" class="nav-item @(curPath.StartsWith("/benchmark") ? "nav-item--active" : "")">
+                        <span class="nav-item-icon">⚡</span>
+                        <span class="nav-item-label">Benchmark</span>
+                    </a>
                 }
+            </nav>
 
-                @* ── User dropdown ── *@
-                
-                    var displayName = Context.User.FindFirst("DisplayName")?.Value
-                                      ?? Context.User.Identity.Name
-                                      ?? "User";
-                    var initials = string.IsNullOrWhiteSpace(displayName)
-                        ? "U"
-                        : displayName.Substring(0, 1).ToUpper();
-                
+            <div class="nav-user-section">
                 <div class="nav-user-wrap" id="navUserWrap">
-                    <button class="nav-user-btn"
-                            id="navUserBtn"
-                            aria-haspopup="true"
-                            aria-expanded="false"
-                            aria-controls="navUserDropdown"
-                            title="Account options">
+                    <button class="nav-user-btn" id="navUserBtn"
+                            aria-haspopup="true" aria-expanded="false"
+                            aria-controls="navUserDropdown" title="Account options">
                         <span class="nav-user-avatar">@initials</span>
                         <span class="nav-user-name">@displayName</span>
                         <span class="nav-user-chevron">▾</span>
                     </button>
 
-                    <div class="nav-user-dropdown" id="navUserDropdown" role="menu">
+                    <div class="nav-user-dropdown nav-user-dropdown--up" id="navUserDropdown" role="menu">
                         <button class="dropdown-item" id="openAccountModal" role="menuitem">
                             <span class="dropdown-item-icon">👤</span>
                             Profile
@@ -82,10 +110,9 @@
                         </form>
                     </div>
                 </div>
-            }
-
-        </div>
-    </nav>
+            </div>
+        }
+    </aside>
 
     <div class="page-body">
         @RenderBody()
@@ -109,6 +136,24 @@
 
     <script>
     (function () {
+        // ── Sidebar collapse toggle ───────────────────────────────────────
+        var sidebar    = document.getElementById('navSidebar');
+        var toggleBtn  = document.getElementById('navToggleBtn');
+        var COLLAPSED  = 'nav-sidebar--collapsed';
+        var LS_KEY     = 'ragflow_sidebar_collapsed';
+
+        if (sidebar && toggleBtn) {
+            // Restore saved state before first paint
+            if (localStorage.getItem(LS_KEY) === '1') {
+                sidebar.classList.add(COLLAPSED);
+            }
+
+            toggleBtn.addEventListener('click', function () {
+                var isNowCollapsed = sidebar.classList.toggle(COLLAPSED);
+                localStorage.setItem(LS_KEY, isNowCollapsed ? '1' : '0');
+            });
+        }
+
         // ── Dropdown toggle ───────────────────────────────────────────────
         var btn       = document.getElementById('navUserBtn');
         var dropdown  = document.getElementById('navUserDropdown');

@@ -38,57 +38,126 @@
         Model.CurrentSort != column ? "" : Model.CurrentDir == "asc" ? " ▲" : " ▼";
 }
 
+@{
+    var isAdmin = User.IsInRole("admin");
+}
 <section class="docs-shell">
     <header class="docs-header">
         <div>
             <h1 class="docs-title">Documents</h1>
-            <p class="docs-subtitle">@Model.Documents.Count file@(Model.Documents.Count == 1 ? "" : "s") in your knowledge base</p>
+            @if (isAdmin)
+            {
+                <p class="docs-subtitle">@Model.Documents.Count file@(Model.Documents.Count == 1 ? "" : "s") in your knowledge base</p>
+            }
+            else
+            {
+                <p class="docs-subtitle">@Model.Documents.Count document@(Model.Documents.Count == 1 ? "" : "s") available to you</p>
+            }
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
-                  id="docsUploadForm" class="docs-upload-form" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                <select name="department" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
-                    <option value="">Phòng ban…</option>
-                    <option value="HR">HR</option>
-                    <option value="DEV">Dev</option>
-                    <option value="TEST">Test</option>
-                    <option value="BA">BA</option>
-                    <option value="FINANCE">Finance</option>
-                </select>
-                <select name="docType" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
-                    <option value="">Loại tài liệu…</option>
-                    <option value="Quy trình">Quy trình</option>
-                    <option value="Quy định">Quy định</option>
-                    <option value="Quyết định">Quyết định</option>
-                    <option value="Thông báo">Thông báo</option>
-                    <option value="Biểu mẫu">Biểu mẫu</option>
-                    <option value="Tài liệu kỹ thuật">Tài liệu kỹ thuật</option>
-                </select>
-                <select name="scope" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
-                    <option value="Toàn công ty">Toàn công ty</option>
-                    <option value="Nội bộ phòng ban">Nội bộ phòng ban</option>
-                    <option value="Ban lãnh đạo">Ban lãnh đạo</option>
-                </select>
-                <select name="status" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
-                    <option value="Đang hiệu lực">Đang hiệu lực</option>
-                    <option value="Bản nháp">Bản nháp</option>
-                    <option value="Hết hiệu lực">Hết hiệu lực</option>
-                </select>
-                <label for="docsUpload" class="btn btn--primary" id="docsUploadLabel">+ Upload files</label>
-                <input type="file" id="docsUpload" name="files" multiple
-                       accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.md,.png,.jpg,.jpeg"
-                       class="visually-hidden-input" />
-            </form>
-            <button type="button" id="batchReparseBtn"
-                    class="btn-icon btn-icon--wide"
-                    style="display:none; flex-shrink:0" title="Reparse selected">
-                ↻ Reparse selected
-            </button>
-            <button type="button" id="batchDeleteBtn"
-                    class="btn-icon btn-icon--wide btn-icon--danger"
-                    style="display:none; flex-shrink:0" title="Delete selected">
-                🗑 Delete selected
-            </button>
+            @if (isAdmin)
+            {
+                <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
+                      id="docsUploadForm" class="docs-upload-form">
+                    <button type="button" class="btn btn--primary" id="openUploadDialog">+ Upload files</button>
+                    <input type="file" id="docsUpload" name="files" multiple
+                           accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.md,.png,.jpg,.jpeg"
+                           class="visually-hidden-input" />
+                </form>
+
+                <dialog id="uploadDialog" style="
+                    background:var(--bg-card);color:var(--text);border:1px solid var(--border);
+                    border-radius:14px;padding:28px 32px;min-width:340px;box-shadow:0 8px 40px rgba(0,0,0,.5);">
+                    <h3 style="margin:0 0 20px;font-size:1rem;">Upload tài liệu</h3>
+                    <div style="display:flex;flex-direction:column;gap:12px;">
+                        <div>
+                            <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;">Phòng ban</label>
+                            <select name="department" form="docsUploadForm" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:0.88rem;">
+                                <option value="">— Chọn phòng ban —</option>
+                                <option value="HR">HR</option>
+                                <option value="DEV">Dev</option>
+                                <option value="TEST">Test</option>
+                                <option value="BA">BA</option>
+                                <option value="FINANCE">Finance</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;">Loại tài liệu <span style="color:var(--danger)">*</span></label>
+                            <select id="dialogDocType" name="docType" form="docsUploadForm" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:0.88rem;">
+                                <option value="">— Chọn loại —</option>
+                                <option value="Quy trình">Quy trình</option>
+                                <option value="Quy định">Quy định</option>
+                                <option value="Quyết định">Quyết định</option>
+                                <option value="Thông báo">Thông báo</option>
+                                <option value="Biểu mẫu">Biểu mẫu</option>
+                                <option value="Tài liệu kỹ thuật">Tài liệu kỹ thuật</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;">Phạm vi</label>
+                            <select name="scope" form="docsUploadForm" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:0.88rem;">
+                                <option value="Toàn công ty">Toàn công ty</option>
+                                <option value="Nội bộ phòng ban">Nội bộ phòng ban</option>
+                                <option value="Ban lãnh đạo">Ban lãnh đạo</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;">Trạng thái</label>
+                            <select name="status" form="docsUploadForm" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:0.88rem;">
+                                <option value="Đang hiệu lực">Đang hiệu lực</option>
+                                <option value="Bản nháp">Bản nháp</option>
+                                <option value="Hết hiệu lực">Hết hiệu lực</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;margin-top:24px;justify-content:flex-end;">
+                        <button type="button" id="cancelUploadDialog"
+                                style="padding:8px 18px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:0.88rem;">
+                            Huỷ
+                        </button>
+                        <label for="docsUpload" class="btn btn--primary" id="docsUploadLabel"
+                               style="padding:8px 18px;cursor:pointer;border-radius:8px;font-size:0.88rem;">
+                            Chọn file…
+                        </label>
+                    </div>
+                </dialog>
+                <button type="button" id="batchReparseBtn"
+                        class="btn-icon btn-icon--wide"
+                        style="display:none; flex-shrink:0" title="Reparse selected">
+                    ↻ Reparse selected
+                </button>
+                <button type="button" id="batchDeleteBtn"
+                        class="btn-icon btn-icon--wide btn-icon--danger"
+                        style="display:none; flex-shrink:0" title="Delete selected">
+                    🗑 Delete selected
+                </button>
+            }
+            else
+            {
+                @* Non-admin: dept is auto from profile; docType is required *@
+                <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
+                      id="docsUploadForm" class="docs-upload-form" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                    <span style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;
+                                 background:var(--surface);color:var(--text-muted);font-size:0.82rem;
+                                 white-space:nowrap;">
+                        🏢 @(string.IsNullOrEmpty(Model.UserDepartment) ? "Chưa có phòng ban" : Model.UserDepartment)
+                    </span>
+                    <select id="nonAdminDocType" name="docType"
+                            style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
+                        <option value="">Loại tài liệu… *</option>
+                        <option value="Quy trình">Quy trình</option>
+                        <option value="Quy định">Quy định</option>
+                        <option value="Quyết định">Quyết định</option>
+                        <option value="Thông báo">Thông báo</option>
+                        <option value="Biểu mẫu">Biểu mẫu</option>
+                        <option value="Tài liệu kỹ thuật">Tài liệu kỹ thuật</option>
+                    </select>
+                    <label for="docsUpload" class="btn btn--primary" id="docsUploadLabel">+ Submit for review</label>
+                    <input type="file" id="docsUpload" name="files" multiple
+                           accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.md,.png,.jpg,.jpeg"
+                           class="visually-hidden-input" />
+                </form>
+            }
         </div>
     </header>
 
@@ -99,19 +168,37 @@
     {
         <div class="docs-empty">
             <span class="docs-empty-icon">📂</span>
-            <p class="docs-empty-title">No documents yet</p>
-            <p class="docs-empty-sub">Click + Upload files to add your first file.</p>
+            @if (isAdmin)
+            {
+                <p class="docs-empty-title">No documents yet</p>
+                <p class="docs-empty-sub">Click + Upload files to add your first file.</p>
+            }
+            else
+            {
+                <p class="docs-empty-title">No documents available</p>
+                <p class="docs-empty-sub">No active documents have been shared with your department yet.</p>
+            }
         </div>
     }
     else
     {
+        <div id="docsFilterBar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+            <select id="filterDept"   style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;"><option value="">Phòng ban</option></select>
+            <select id="filterType"   style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;"><option value="">Loại tài liệu</option></select>
+            <select id="filterScope"  style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;"><option value="">Phạm vi</option></select>
+            <select id="filterStatus" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;"><option value="">Trạng thái</option></select>
+            <span id="filterCount" style="font-size:12px;color:var(--text-muted);margin-left:4px;"></span>
+        </div>
         <div class="docs-table-wrap">
             <table class="docs-table">
                 <thead>
                     <tr>
-                        <th style="width:1%; white-space:nowrap; text-align:center">
-                            <input type="checkbox" id="selectAll" title="Select all" />
-                        </th>
+                        @if (isAdmin)
+                        {
+                            <th style="width:1%; white-space:nowrap; text-align:center">
+                                <input type="checkbox" id="selectAll" title="Select all" />
+                            </th>
+                        }
                         <th><a href="@SortHref("name")" class="crumb-link">Name@(SortArrow("name"))</a></th>
                         <th><a href="@SortHref("size")" class="crumb-link">Size@(SortArrow("size"))</a></th>
                         <th>Phòng ban</th>
@@ -120,19 +207,23 @@
                         <th>Trạng thái</th>
                         <th><a href="@SortHref("chunks")" class="crumb-link">Chunks@(SortArrow("chunks"))</a></th>
                         <th><a href="@SortHref("uploaded")" class="crumb-link">Uploaded@(SortArrow("uploaded"))</a></th>
-                        <th></th>
+                        @if (isAdmin) { <th></th> }
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var d in Model.Documents)
                     {
-                        <tr>
-                            <td style="width:1%; white-space:nowrap; text-align:center">
-                                <input type="checkbox" class="doc-check" value="@d.Id" data-filename="@d.Name" />
-                            </td>
+                        <tr data-dept="@d.Department" data-doctype="@d.DocType"
+                            data-scope="@d.Scope" data-status="@d.Status">
+                            @if (isAdmin)
+                            {
+                                <td style="width:1%; white-space:nowrap; text-align:center">
+                                    <input type="checkbox" class="doc-check" value="@d.Id" data-filename="@d.Name" />
+                                </td>
+                            }
                             <td class="doc-name-cell">
                                 <span class="doc-icon">@FileIcon(d.Type)</span>
-                                @if (d.RunStatus == "DONE" || d.ChunkCount > 0)
+                                @if (d.ChunkCount > 0)
                                 {
                                     <a href="/DocumentChunks?id=@d.Id" class="doc-name doc-name--link" title="@d.Name">@d.Name</a>
                                 }
@@ -142,47 +233,114 @@
                                 }
                             </td>
                             <td>@FormatSize(d.Size)</td>
-                            <td>@(string.IsNullOrEmpty(d.Department) ? "—" : d.Department)</td>
-                            <td>@(string.IsNullOrEmpty(d.DocType) ? "—" : d.DocType)</td>
-                            <td>@(string.IsNullOrEmpty(d.Scope) ? "—" : d.Scope)</td>
+                            @if (isAdmin)
+                            {
+                                <td>
+                                    <select class="doc-tag-select" data-doc-id="@d.Id" data-field="department" data-current="@d.Department">
+                                        <option value="">—</option>
+                                        @foreach (var o in new[]{"HR","DEV","TEST","BA","FINANCE"})
+                                        {
+                                            if (o == d.Department) { <option value="@o" selected>@o</option> }
+                                            else { <option value="@o">@o</option> }
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="doc-tag-select" data-doc-id="@d.Id" data-field="docType" data-current="@d.DocType">
+                                        <option value="">—</option>
+                                        @foreach (var o in new[]{"Quy trình","Quy định","Quyết định","Thông báo","Biểu mẫu","Tài liệu kỹ thuật"})
+                                        {
+                                            if (o == d.DocType) { <option value="@o" selected>@o</option> }
+                                            else { <option value="@o">@o</option> }
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="doc-tag-select" data-doc-id="@d.Id" data-field="scope" data-current="@d.Scope">
+                                        @foreach (var o in new[]{"Toàn công ty","Nội bộ phòng ban","Ban lãnh đạo"})
+                                        {
+                                            if (o == d.Scope) { <option value="@o" selected>@o</option> }
+                                            else { <option value="@o">@o</option> }
+                                        }
+                                    </select>
+                                </td>
+                            }
+                            else
+                            {
+                                <td>@(string.IsNullOrEmpty(d.Department) ? "—" : d.Department)</td>
+                                <td>@(string.IsNullOrEmpty(d.DocType) ? "—" : d.DocType)</td>
+                                <td>@(string.IsNullOrEmpty(d.Scope) ? "—" : d.Scope)</td>
+                            }
                             <td>
-                                @if (!string.IsNullOrEmpty(d.Status))
+                                @if (isAdmin)
                                 {
                                     var statusCls = d.Status switch {
                                         "Đang hiệu lực" => "status-done",
                                         "Hết hiệu lực"  => "status-cancel",
                                         _               => "status-unstart"
                                     };
-                                    <span class="status-badge @statusCls">@d.Status</span>
+                                    <select class="doc-status-select status-badge @statusCls"
+                                            data-doc-id="@d.Id" data-field="status" data-current="@d.Status"
+                                            title="Click to change status">
+                                        @foreach (var opt in new[] { "Đang hiệu lực", "Bản nháp", "Hết hiệu lực" })
+                                        {
+                                            if (opt == d.Status)
+                                            {
+                                                <option value="@opt" selected>@opt</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@opt">@opt</option>
+                                            }
+                                        }
+                                    </select>
                                 }
-                                else { <span>—</span> }
+                                else
+                                {
+                                    if (!string.IsNullOrEmpty(d.Status))
+                                    {
+                                        var statusCls = d.Status switch {
+                                            "Đang hiệu lực" => "status-done",
+                                            "Hết hiệu lực"  => "status-cancel",
+                                            _               => "status-unstart"
+                                        };
+                                        <span class="status-badge @statusCls">@d.Status</span>
+                                    }
+                                    else { <span>—</span> }
+                                }
                             </td>
                             <td>
-                                <span class="status-badge status-@d.RunStatus.ToLower()">
-                                    @d.RunStatus
-                                    @if (d.RunStatus == "RUNNING" && d.Progress > 0)
-                                    {
-                                        <span class="status-progress">@(((int)(d.Progress * 100)))%</span>
-                                    }
-                                </span>
+                                @if (isAdmin)
+                                {
+                                    <span class="status-badge status-@d.RunStatus.ToLower()">
+                                        @d.RunStatus
+                                        @if (d.RunStatus == "RUNNING" && d.Progress > 0)
+                                        {
+                                            <span class="status-progress">@(((int)(d.Progress * 100)))%</span>
+                                        }
+                                    </span>
+                                }
                             </td>
                             <td>@(d.ChunkCount > 0 ? d.ChunkCount.ToString() : "—")</td>
                             <td class="doc-date">@FormatDate(d.CreateTime)</td>
-                            <td class="doc-actions">
-                                @if (d.RunStatus is "FAIL" or "CANCEL" or "UNSTART")
-                                {
-                                    <form method="post" asp-page-handler="Reparse" class="inline-form">
-                                        <input type="hidden" name="documentId" value="@d.Id" />
-                                        <input type="hidden" name="fileName" value="@d.Name" />
-                                        <button type="submit" class="btn-icon" title="Parse / retry">↻</button>
+                            @if (isAdmin)
+                            {
+                                <td class="doc-actions">
+                                    @if (d.RunStatus is "FAIL" or "CANCEL" or "UNSTART")
+                                    {
+                                        <form method="post" asp-page-handler="Reparse" class="inline-form">
+                                            <input type="hidden" name="documentId" value="@d.Id" />
+                                            <input type="hidden" name="fileName" value="@d.Name" />
+                                            <button type="submit" class="btn-icon" title="Parse / retry">↻</button>
+                                        </form>
+                                    }
+                                    <form method="post" asp-page-handler="Delete" class="inline-form"
+                                          onsubmit="return confirm('Delete &quot;@d.Name&quot;? This also removes its chunks from the knowledge base.');">
+                                        <input type="hidden" name="documentIds" value="@d.Id" />
+                                        <button type="submit" class="btn-icon btn-icon--danger" title="Delete">🗑</button>
                                     </form>
-                                }
-                                <form method="post" asp-page-handler="Delete" class="inline-form"
-                                      onsubmit="return confirm('Delete &quot;@d.Name&quot;? This also removes its chunks from the knowledge base.');">
-                                    <input type="hidden" name="documentIds" value="@d.Id" />
-                                    <button type="submit" class="btn-icon btn-icon--danger" title="Delete">🗑</button>
-                                </form>
-                            </td>
+                                </td>
+                            }
                         </tr>
                     }
                 </tbody>
@@ -192,12 +350,13 @@
 </section>
 <div id="af-placeholder" hidden>@Html.AntiForgeryToken()</div>
 <script>
-    const selectAll      = document.getElementById('selectAll');
-    const batchBtn       = document.getElementById('batchDeleteBtn');
+    const selectAll       = document.getElementById('selectAll');
+    const batchBtn        = document.getElementById('batchDeleteBtn');
     const batchReparseBtn = document.getElementById('batchReparseBtn');
-    const checkboxes     = () => [...document.querySelectorAll('.doc-check')];
+    const checkboxes      = () => [...document.querySelectorAll('.doc-check')];
 
     function syncBatchButtons() {
+        if (!batchBtn || !batchReparseBtn) return;
         const any = checkboxes().some(c => c.checked);
         batchBtn.style.display        = any ? '' : 'none';
         batchReparseBtn.style.display = any ? '' : 'none';
@@ -208,13 +367,15 @@
         syncBatchButtons();
     });
 
-    document.addEventListener('change', e => {
-        if (!e.target.classList.contains('doc-check')) return;
-        syncBatchButtons();
-        const any = checkboxes().some(c => c.checked);
-        selectAll.indeterminate = any && !checkboxes().every(c => c.checked);
-        selectAll.checked = checkboxes().every(c => c.checked);
-    });
+    if (selectAll) {
+        document.addEventListener('change', e => {
+            if (!e.target.classList.contains('doc-check')) return;
+            syncBatchButtons();
+            const any = checkboxes().some(c => c.checked);
+            selectAll.indeterminate = any && !checkboxes().every(c => c.checked);
+            selectAll.checked = checkboxes().every(c => c.checked);
+        });
+    }
     // ── Async upload: intercept file selection, POST via fetch, poll status ────
     const docsUpload     = document.getElementById('docsUpload');
     const docsUploadForm = document.getElementById('docsUploadForm');
@@ -224,8 +385,29 @@
     const JOB_POLL_MS   = 3000;
     const JOB_MAX_POLLS = 200;
 
+    // ── Upload dialog (admin only) ─────────────────────────────────────────────
+    const uploadDialog       = document.getElementById('uploadDialog');
+    const openUploadDialogBtn = document.getElementById('openUploadDialog');
+    const cancelDialogBtn    = document.getElementById('cancelUploadDialog');
+
+    openUploadDialogBtn?.addEventListener('click', () => uploadDialog?.showModal());
+    cancelDialogBtn?.addEventListener('click',     () => uploadDialog?.close());
+    uploadDialog?.addEventListener('click', e => {
+        if (e.target === uploadDialog) uploadDialog.close(); // click backdrop to close
+    });
+
     docsUpload?.addEventListener('change', async () => {
         if (!docsUpload.files.length) return;
+        uploadDialog?.close();
+
+        // Require docType before proceeding
+        const docTypeSelect = document.getElementById('dialogDocType')
+            ?? docsUploadForm?.querySelector('select[name="docType"]');
+        if (docTypeSelect && !docTypeSelect.value) {
+            alert('Vui lòng chọn loại tài liệu trước khi upload.');
+            docsUpload.value = '';
+            return;
+        }
 
         // Disable button while uploading
         docsUploadLbl.textContent = '⏳ Uploading…';
@@ -238,6 +420,12 @@
 
             if (!res.ok) throw new Error(`Server ${res.status}`);
             const data = await res.json();
+
+            if (data.pending?.length) {
+                data.pending.forEach(p =>
+                    showDocsBanner('alert--info', `📋 "${p.fileName}" submitted for review.`));
+                return;
+            }
 
             if (!data.jobs?.length) {
                 showDocsBanner('alert--error', '⚠ No files were queued.');
@@ -313,6 +501,85 @@
     if ([...document.querySelectorAll('.status-running')].length > 0) {
         setTimeout(() => window.location.reload(), 5000);
     }
+
+    // ── Inline tag update (dept, docType, scope, status) ─────────────────────
+    document.addEventListener('change', async e => {
+        const sel = e.target.closest('.doc-tag-select, .doc-status-select');
+        if (!sel) return;
+        const docId = sel.dataset.docId;
+        const field = sel.dataset.field ?? 'status';
+        const value = sel.value;
+        const token = document.querySelector('#af-placeholder input[name="__RequestVerificationToken"]')?.value;
+
+        sel.disabled = true;
+        try {
+            const fd = new FormData();
+            fd.append('documentId', docId);
+            fd.append('field', field);
+            fd.append('value', value);
+            if (token) fd.append('__RequestVerificationToken', token);
+
+            const res = await fetch('?handler=UpdateTag', { method: 'POST', body: fd });
+            if (!res.ok) throw new Error(`Server ${res.status}`);
+            sel.dataset.current = value;
+
+            // Update status badge colour when field is status
+            if (field === 'status') {
+                sel.className = sel.className.replace(/status-done|status-cancel|status-unstart/g, '');
+                sel.classList.add(
+                    value === 'Đang hiệu lực' ? 'status-done' :
+                    value === 'Hết hiệu lực'  ? 'status-cancel' : 'status-unstart');
+            }
+        } catch {
+            sel.value = sel.dataset.current;
+        } finally {
+            sel.disabled = false;
+        }
+    });
+
+    // ── Tag filters ───────────────────────────────────────────────────────────
+    (function () {
+        const rows       = [...document.querySelectorAll('tbody tr[data-dept]')];
+        const fDept      = document.getElementById('filterDept');
+        const fType      = document.getElementById('filterType');
+        const fScope     = document.getElementById('filterScope');
+        const fStatus    = document.getElementById('filterStatus');
+        const countLabel = document.getElementById('filterCount');
+        if (!fDept) return;
+
+        function populate(sel, attr) {
+            const vals = [...new Set(rows.map(r => r.dataset[attr]).filter(v => v))].sort();
+            vals.forEach(v => {
+                const o = document.createElement('option');
+                o.value = o.textContent = v;
+                sel.appendChild(o);
+            });
+        }
+        populate(fDept,   'dept');
+        populate(fType,   'doctype');
+        populate(fScope,  'scope');
+        populate(fStatus, 'status');
+
+        function applyFilters() {
+            const dept = fDept.value, type = fType.value,
+                  scope = fScope.value, status = fStatus.value;
+            let visible = 0;
+            rows.forEach(r => {
+                const match =
+                    (!dept   || r.dataset.dept    === dept)  &&
+                    (!type   || r.dataset.doctype === type)  &&
+                    (!scope  || r.dataset.scope   === scope) &&
+                    (!status || r.dataset.status  === status);
+                r.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            countLabel.textContent = (dept || type || scope || status)
+                ? `${visible} / ${rows.length} tài liệu` : '';
+        }
+
+        [fDept, fType, fScope, fStatus].forEach(s => s.addEventListener('change', applyFilters));
+    })();
+
         batchBtn?.addEventListener('click', async () => {
         const ids = checkboxes().filter(c => c.checked).map(c => c.value);
         if (!ids.length || !confirm(`Delete ${ids.length} document(s)?`)) return;
