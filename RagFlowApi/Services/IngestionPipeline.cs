@@ -111,7 +111,9 @@ public class IngestionPipeline
     }
 
     // ── IngestAsync (new uploads via IFormFile) ───────────────────────────────
-    public async Task<IngestionResult> IngestAsync(string datasetId, IFormFile file, string category = "General")
+    public async Task<IngestionResult> IngestAsync(
+        string datasetId, IFormFile file,
+        string department = "", string docType = "", string scope = "", string status = "")
     {
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
@@ -156,7 +158,8 @@ public class IngestionPipeline
         if (ext == ".docx")
             await CacheDocxPreviewAsync(bytes, file.FileName, documentId);
 
-        await IndexChunksAsync(datasetId, documentId, file.FileName, chunks, category);
+        await IndexChunksAsync(datasetId, documentId, file.FileName, chunks,
+            department, docType, scope, status);
 
         return new IngestionResult(documentId, elements.Count, chunks.Count, chunks.Count);
     }
@@ -164,7 +167,7 @@ public class IngestionPipeline
     // ── IngestBytesAsync (reparse / byte-array uploads) ──────────────────────
     public async Task<IngestionResult> IngestBytesAsync(
         string datasetId, byte[] bytes, string fileName, string contentType,
-        string category = "General")
+        string department = "", string docType = "", string scope = "", string status = "")
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
 
@@ -201,14 +204,14 @@ public class IngestionPipeline
         if (ext == ".docx")
             await CacheDocxPreviewAsync(bytes, fileName, documentId);
 
-        await IndexChunksAsync(datasetId, documentId, fileName, chunks, category);
+        await IndexChunksAsync(datasetId, documentId, fileName, chunks,
+            department, docType, scope, status);
 
         return new IngestionResult(documentId, elements.Count, chunks.Count, chunks.Count);
     }
 
     // ── ReingestAsync (↻ reparse button) ─────────────────────────────────────
-    public async Task ReingestAsync(string datasetId, string documentId, string fileName,
-        string category = "")
+    public async Task ReingestAsync(string datasetId, string documentId, string fileName)
     {
         var dir = Path.Combine(_env.WebRootPath, "doc-cache");
         var match = (Directory.Exists(dir)
@@ -225,23 +228,25 @@ public class IngestionPipeline
             _                 => "application/octet-stream"
         };
 
-        // Preserve the category from existing chunks before deleting them
-        if (string.IsNullOrEmpty(category))
-        {
-            var existing = await _chunkStore.GetByDocumentAsync(documentId);
-            category = existing.FirstOrDefault()?.Category ?? "General";
-        }
+        // Preserve tags from existing chunks before deleting them
+        var existing = await _chunkStore.GetByDocumentAsync(documentId);
+        var first    = existing.FirstOrDefault();
+        var dept     = first?.Department ?? "";
+        var docType  = first?.DocType    ?? "";
+        var scope    = first?.Scope      ?? "";
+        var status   = first?.Status     ?? "";
 
         await _chunkStore.DeleteByDocumentAsync(documentId);
         try { File.Delete(match); } catch { }
 
-        await IngestBytesAsync(datasetId, bytes, fileName, ct, category);
+        await IngestBytesAsync(datasetId, bytes, fileName, ct, dept, docType, scope, status);
     }
 
     // ── Embed chunks into Elasticsearch for hybrid retrieval ──────────────────
     private async Task IndexChunksAsync(
         string datasetId, string documentId, string documentName,
-        List<IngestionChunk> chunks, string category = "General")
+        List<IngestionChunk> chunks,
+        string department = "", string docType = "", string scope = "", string status = "")
     {
         var stored = new List<Models.StoredChunk>(chunks.Count);
 
@@ -265,7 +270,10 @@ public class IngestionPipeline
                 Content:      chunk.Content,
                 Embedding:    embedding,
                 Keywords:     chunk.Keywords ?? [],
-                Category:     category));
+                Department:   department,
+                DocType:      docType,
+                Scope:        scope,
+                Status:       status));
 
             _log.LogInformation(
                 "Indexed chunk {I}/{Total} for {DocId} (embedding dim: {D})",

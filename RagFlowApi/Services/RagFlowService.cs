@@ -227,12 +227,12 @@ public class RagFlowService
     public async Task<string> GetAnswerAsync(
         string datasetId,
         string question,
-        IReadOnlyList<string>? allowedCategories = null)
+        DeptFilter? filter = null)
     {
         var chunks = await _retriever.RetrieveAsync(
-            datasetId, question,
+            question, datasetId,
             bm25Weight: _bm25Weight,
-            allowedCategories: allowedCategories);
+            filter: filter);
 
         var answer = await CallGeminiForAnswerAsync(
             question, chunks.Select(c => c.Content).ToList());
@@ -243,9 +243,9 @@ public class RagFlowService
     // ── 7b. Ask a question, persist Q&A to ConversationStore ─────────────────
     public async Task<string> AskQuestionAsync(
         string datasetId, string sessionId, string question,
-        IReadOnlyList<string>? allowedCategories = null)
+        DeptFilter? filter = null)
     {
-        var completionJson = await GetAnswerAsync(datasetId, question, allowedCategories);
+        var completionJson = await GetAnswerAsync(datasetId, question, filter);
 
         // Deserialise the answer and chunks back out so we can persist them
         var answer = ExtractAnswerFromJson(completionJson);

@@ -63,7 +63,10 @@ public record DocumentItem(
     int TokenCount,
     double Progress,     // 0.0–1.0 while parsing
     long CreateTime,     // unix ms
-    string Category = "General"
+    string Department = "",
+    string DocType = "",
+    string Scope = "",
+    string Status = ""
 );
 public record DocumentChunk(
     string Id,
@@ -75,17 +78,26 @@ public record DocumentChunk(
 );
 
 /// <summary>
-/// A chunk stored in the local vector index (VectorChunkStore).
+/// Scope and access-control values for the Department filter.
+/// IsAdmin = true → no dept/scope filter applied; all chunks are visible.
+/// </summary>
+public record DeptFilter(bool IsAdmin, string? Department);
+
+/// <summary>
+/// A chunk stored in the local vector index.
 /// Carries the pre-computed BGE-M3 embedding so retrieval needs no
 /// re-embedding of the corpus at query time.
 /// </summary>
 public record StoredChunk(
-    string Id,           // stable content-hash used as the dictionary key
-    string DatasetId,    // filters chunks to the right user's knowledge base
+    string Id,
+    string DatasetId,
     string DocumentId,
     string DocumentName,
     string Content,
-    float[] Embedding,   // BGE-M3 dense vector (~1024 dims)
+    float[] Embedding,
     List<string> Keywords,
-    string Category = "General"  // department tag; controls which users can retrieve this chunk
+    string Department = "",   // DEV | TEST | BA | HR | FINANCE
+    string DocType    = "",   // Quy trình | Quy định | …
+    string Scope      = "",   // Toàn công ty | Nội bộ phòng ban | Ban lãnh đạo
+    string Status     = ""    // Đang hiệu lực | Hết hiệu lực | Bản nháp
 );

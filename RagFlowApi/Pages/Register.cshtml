@@ -1,232 +1,261 @@
 @page
 @model RagFlowApi.Pages.RegisterModel
 @{
-    ViewData["Title"] = "Create account";
+    ViewData["Title"] = "Manage Users";
     Layout = "_Layout";
 }
 
-<div class="auth-shell">
-    <div class="auth-card">
+<div class="users-shell">
 
-        <div class="auth-header">
-            <span class="auth-logo">⬡</span>
-            <h1 class="auth-title">Create account</h1>
-            <p class="auth-sub">Your personal knowledge base will be set up automatically.</p>
+    <header class="docs-header">
+        <div>
+            <h1 class="docs-title">Manage Users</h1>
+            <p class="docs-subtitle">@Model.Users.Count account@(Model.Users.Count == 1 ? "" : "s")</p>
         </div>
+    </header>
 
-        @* Error alert *@
-        @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-        {
-            <div class="alert alert--error">
-                ⚠ @Model.ErrorMessage
+    @if (!string.IsNullOrWhiteSpace(Model.FeedbackMsg))
+    {
+        <div class="alert @(Model.FeedbackOk ? "alert--success" : "alert--error")" style="margin-bottom:16px">
+            @(Model.FeedbackOk ? "✓" : "⚠") @Model.FeedbackMsg
+        </div>
+    }
+
+    @* ── User list ───────────────────────────────────────────────────── *@
+    @if (Model.Users.Any())
+    {
+        <div class="docs-table-wrap" style="margin-bottom:32px">
+            <table class="docs-table">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Display name</th>
+                        <th>Full name</th>
+                        <th>Department</th>
+                        <th>Job title</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in Model.Users)
+                    {
+                        <tr>
+                            <td><code>@u.Username</code></td>
+                            <td>@u.DisplayName</td>
+                            <td>@(string.IsNullOrEmpty(u.FullName) ? "—" : u.FullName)</td>
+                            <td>@(string.IsNullOrEmpty(u.Department) ? "—" : u.Department)</td>
+                            <td>@(string.IsNullOrEmpty(u.JobTitle) ? "—" : u.JobTitle)</td>
+                            <td>@(string.IsNullOrEmpty(u.Email) ? "—" : u.Email)</td>
+                            <td>
+                                <span class="status-badge @(u.IsAdmin ? "status-done" : "status-unstart")">
+                                    @(u.IsAdmin ? "Admin" : "User")
+                                </span>
+                            </td>
+                            <td>
+                                @if (!u.Username.Equals(User.Identity!.Name, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <form method="post" asp-page-handler="Delete" class="inline-form"
+                                          onsubmit="return confirm('Delete account &quot;@u.Username&quot;? This cannot be undone.');">
+                                        <input type="hidden" name="username" value="@u.Username" />
+                                        <button type="submit" class="btn-icon btn-icon--danger" title="Delete">🗑</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @* ── Create user form ─────────────────────────────────────────────── *@
+    <div class="users-create-card">
+        <h2 class="users-create-title">Create new account</h2>
+
+        <form method="post" asp-page-handler="Create" class="users-create-form">
+
+            <div class="users-section-label">Credentials</div>
+            <div class="users-row">
+                <div class="users-field">
+                    <label>Username <span class="req">*</span></label>
+                    <input type="text" name="newUsername" value="@Model.NewUsername"
+                           placeholder="e.g. tung_vu" autocomplete="off" required />
+                    <span class="users-hint">Letters, numbers, _ and - only.</span>
+                </div>
+                <div class="users-field">
+                    <label>Display name</label>
+                    <input type="text" name="newDisplayName" value="@Model.NewDisplayName"
+                           placeholder="e.g. Tùng Vũ" autocomplete="off" />
+                </div>
             </div>
-        }
 
-        <form method="post" class="auth-form">
-
-            <div class="auth-field">
-                <label class="auth-label" for="username">Username</label>
-                <input class="auth-input"
-                       type="text"
-                       id="username"
-                       name="username"
-                       value="@Model.Username"
-                       autocomplete="username"
-                       placeholder="e.g. tung_vu"
-                       required />
-                <span class="auth-hint">Letters, numbers, _ and - only. 3–32 characters.</span>
+            <div class="users-row">
+                <div class="users-field">
+                    <label>Password <span class="req">*</span></label>
+                    <input type="password" name="newPassword" autocomplete="new-password"
+                           placeholder="At least 6 characters" required />
+                    <span class="users-hint">User can change it after first login.</span>
+                </div>
+                <div class="users-field users-field--check">
+                    <label class="users-check-label">
+                        <input type="checkbox" name="newIsAdmin" value="true" @(Model.NewIsAdmin ? "checked" : "") />
+                        Admin privileges
+                    </label>
+                    <span class="users-hint">Admins can upload documents and manage users.</span>
+                </div>
             </div>
 
-            <div class="auth-field">
-                <label class="auth-label" for="displayName">Display name <span class="auth-optional">(optional)</span></label>
-                <input class="auth-input"
-                       type="text"
-                       id="displayName"
-                       name="displayName"
-                       value="@Model.DisplayName"
-                       autocomplete="name"
-                       placeholder="e.g. Tùng Vũ" />
-                <span class="auth-hint">Shown in the navigation bar. Defaults to your username.</span>
+            <div class="users-section-label" style="margin-top:20px">Profile (optional)</div>
+            <div class="users-row">
+                <div class="users-field">
+                    <label>Full name</label>
+                    <input type="text" name="newFullName" value="@Model.NewFullName"
+                           placeholder="e.g. Nguyễn Tùng Vũ" autocomplete="off" />
+                </div>
+                <div class="users-field">
+                    <label>Department</label>
+                    <select name="newDepartment">
+                        <option value="">— select —</option>
+                        @foreach (var dept in new[]{"HR","DEV","TEST","BA","FINANCE"})
+                        {
+                            if (Model.NewDepartment == dept)
+                            { <option value="@dept" selected>@dept</option> }
+                            else
+                            { <option value="@dept">@dept</option> }
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="users-row">
+                <div class="users-field">
+                    <label>Job title</label>
+                    <input type="text" name="newJobTitle" value="@Model.NewJobTitle"
+                           placeholder="e.g. Software Engineer" autocomplete="off" />
+                </div>
+                <div class="users-field">
+                    <label>Email</label>
+                    <input type="email" name="newEmail" value="@Model.NewEmail"
+                           placeholder="e.g. tung@company.vn" autocomplete="off" />
+                </div>
+            </div>
+            <div class="users-row">
+                <div class="users-field">
+                    <label>Phone</label>
+                    <input type="text" name="newPhone" value="@Model.NewPhone"
+                           placeholder="e.g. 0901234567" autocomplete="off" />
+                </div>
+                <div class="users-field"></div>
             </div>
 
-            <div class="auth-field">
-                <label class="auth-label" for="password">Password</label>
-                <input class="auth-input"
-                       type="password"
-                       id="password"
-                       name="password"
-                       autocomplete="new-password"
-                       placeholder="At least 6 characters"
-                       required />
-            </div>
-
-            <div class="auth-field">
-                <label class="auth-label" for="confirmPassword">Confirm password</label>
-                <input class="auth-input"
-                       type="password"
-                       id="confirmPassword"
-                       name="confirmPassword"
-                       autocomplete="new-password"
-                       placeholder="Repeat your password"
-                       required />
-            </div>
-
-            <button type="submit" class="btn btn--primary auth-submit" id="registerBtn">
-                <span class="btn-label">Create account</span>
-                <span class="btn-spinner" aria-hidden="true"></span>
+            <button type="submit" class="btn btn--primary" style="margin-top:8px">
+                Create account
             </button>
 
         </form>
-
-        <p class="auth-footer">
-            Already have an account?
-            <a href="/Login" class="inline-link">Sign in</a>
-        </p>
-
     </div>
 </div>
 
 <style>
-    /* ── Auth shell ────────────────────────────────────────────────────────── */
-    .auth-shell {
+    .users-shell {
         flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px 16px;
+        overflow-y: auto;
+        padding: 32px 40px;
+        width: 100%;
     }
 
-    .auth-card {
-        width: 100%;
-        max-width: 420px;
+    .users-shell > * {
+        max-width: 1000px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .users-create-card {
         background: var(--bg-card);
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        padding: 40px 36px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
+        padding: 28px 32px;
     }
 
-    /* ── Header ────────────────────────────────────────────────────────────── */
-    .auth-header {
-        text-align: center;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .auth-logo {
-        font-size: 32px;
-        color: var(--accent);
-    }
-
-    .auth-title {
-        font-size: 20px;
+    .users-create-title {
+        font-size: 16px;
         font-weight: 600;
+        margin-bottom: 20px;
         color: var(--text-primary);
     }
 
-    .auth-sub {
-        font-size: 13px;
+    .users-section-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .07em;
         color: var(--text-muted);
-        line-height: 1.5;
+        margin-bottom: 10px;
     }
 
-    /* ── Form fields ───────────────────────────────────────────────────────── */
-    .auth-form {
+    .users-create-form {
         display: flex;
         flex-direction: column;
+        gap: 12px;
+    }
+
+    .users-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 16px;
     }
 
-    .auth-field {
+    .users-field {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 5px;
     }
 
-    .auth-label {
+    .users-field label {
         font-size: 13px;
         font-weight: 500;
         color: var(--text-primary);
     }
 
-    .auth-optional {
-        font-weight: 400;
-        color: var(--text-muted);
-    }
-
-    .auth-input {
+    .users-field input[type="text"],
+    .users-field input[type="email"],
+    .users-field input[type="password"],
+    .users-field select {
         background: var(--bg-input);
         border: 1px solid var(--border);
         border-radius: var(--radius-sm);
-        padding: 10px 14px;
+        padding: 9px 12px;
         font-family: var(--font);
-        font-size: 14px;
+        font-size: 13px;
         color: var(--text-primary);
         outline: none;
         transition: border-color .15s;
-        width: 100%;
     }
 
-        .auth-input:focus {
-            border-color: var(--border-focus);
-        }
-
-        .auth-input::placeholder {
-            color: var(--text-subtle);
-        }
-
-    .auth-hint {
-        font-size: 12px;
-        color: var(--text-muted);
+    .users-field input:focus,
+    .users-field select:focus {
+        border-color: var(--border-focus);
     }
 
-    /* ── Submit button ─────────────────────────────────────────────────────── */
-    .auth-submit {
-        width: 100%;
+    .users-field--check {
         justify-content: center;
-        padding: 12px;
-        font-size: 15px;
-        margin-top: 4px;
-        position: relative;
+        padding-top: 4px;
     }
 
-    .btn-spinner {
-        display: none;
-        width: 16px;
-        height: 16px;
-        border: 2px solid rgba(255,255,255,.3);
-        border-top-color: #fff;
-        border-radius: 50%;
-        animation: spin .7s linear infinite;
-    }
-
-    .auth-submit.is-loading .btn-label  { display: none; }
-    .auth-submit.is-loading .btn-spinner { display: inline-block; }
-
-    @@keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    /* ── Footer link ───────────────────────────────────────────────────────── */
-    .auth-footer {
-        text-align: center;
+    .users-check-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+    .users-hint {
+        font-size: 11px;
         color: var(--text-muted);
     }
-</style>
 
-<script>
-    // Show spinner while form is submitting
-    // (RAGFlow API calls during registration can take a few seconds)
-    document.querySelector('.auth-form')
-        ?.addEventListener('submit', () => {
-            document.getElementById('registerBtn')
-                ?.classList.add('is-loading');
-        });
-</script>
+    .req { color: var(--error); }
+</style>

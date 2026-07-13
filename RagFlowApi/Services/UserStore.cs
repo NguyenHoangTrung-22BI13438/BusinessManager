@@ -91,6 +91,12 @@ public class UserStore
         _log.LogInformation("Registered new user: {Username}", record.Username);
     }
 
+    public async Task DeleteAsync(string username)
+    {
+        await using var conn = _db.CreateConnection();
+        await conn.ExecuteAsync("DELETE FROM users WHERE username = @u", new { u = username });
+    }
+
     public async Task UpdateAsync(UserRecord updated)
     {
         await using var conn = _db.CreateConnection();

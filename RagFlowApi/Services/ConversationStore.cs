@@ -25,6 +25,7 @@ public class ConversationStore
     public async Task SaveAsync(string sessionId, List<ChatMessage> messages)
     {
         await using var conn = _db.CreateConnection();
+        await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
         try
         {

@@ -110,9 +110,9 @@ public class AskModel : PageModel
 
         if (hasQ)
         {
-            var allowedCategories = await _userContext.GetAllowedCategoriesAsync();
+            var deptFilter = await _userContext.GetDeptFilterAsync();
             string completionJson = "";
-            try { completionJson = await _svc.AskQuestionAsync(datasetId, sessionId, question!, allowedCategories); }
+            try { completionJson = await _svc.AskQuestionAsync(datasetId, sessionId, question!, deptFilter); }
             catch (Exception ex) { ErrorMessage = $"Something went wrong: {ex.Message}"; }
 
             Messages = await _conversations.LoadAsync(sessionId) ?? [];
@@ -158,9 +158,9 @@ public class AskModel : PageModel
             return;
         }
 
-        var allowedCategories = await _userContext.GetAllowedCategoriesAsync();
+        var deptFilter = await _userContext.GetDeptFilterAsync();
         string completionJson = "";
-        try { completionJson = await _svc.AskQuestionAsync(datasetId, sessionId, lastUser.Content, allowedCategories); }
+        try { completionJson = await _svc.AskQuestionAsync(datasetId, sessionId, lastUser.Content, deptFilter); }
         catch (Exception ex) { ErrorMessage = $"Regeneration failed: {ex.Message}"; }
 
         Messages = CollapseRegenerations(await _conversations.LoadAsync(sessionId) ?? []);

@@ -44,19 +44,36 @@
             <h1 class="docs-title">Documents</h1>
             <p class="docs-subtitle">@Model.Documents.Count file@(Model.Documents.Count == 1 ? "" : "s") in your knowledge base</p>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
-                  id="docsUploadForm" class="docs-upload-form">
-                <input type="text" id="uploadCategory" name="category"
-                       list="categoryList" placeholder="Category (e.g. HR)"
-                       style="padding:6px 10px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); font-size:0.85rem; width:160px;" />
-                <datalist id="categoryList">
-                    <option value="General" />
-                    @foreach (var cat in Model.KnownCategories)
-                    {
-                        <option value="@cat" />
-                    }
-                </datalist>
+                  id="docsUploadForm" class="docs-upload-form" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                <select name="department" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
+                    <option value="">Phòng ban…</option>
+                    <option value="HR">HR</option>
+                    <option value="DEV">Dev</option>
+                    <option value="TEST">Test</option>
+                    <option value="BA">BA</option>
+                    <option value="FINANCE">Finance</option>
+                </select>
+                <select name="docType" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
+                    <option value="">Loại tài liệu…</option>
+                    <option value="Quy trình">Quy trình</option>
+                    <option value="Quy định">Quy định</option>
+                    <option value="Quyết định">Quyết định</option>
+                    <option value="Thông báo">Thông báo</option>
+                    <option value="Biểu mẫu">Biểu mẫu</option>
+                    <option value="Tài liệu kỹ thuật">Tài liệu kỹ thuật</option>
+                </select>
+                <select name="scope" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
+                    <option value="Toàn công ty">Toàn công ty</option>
+                    <option value="Nội bộ phòng ban">Nội bộ phòng ban</option>
+                    <option value="Ban lãnh đạo">Ban lãnh đạo</option>
+                </select>
+                <select name="status" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:0.82rem;">
+                    <option value="Đang hiệu lực">Đang hiệu lực</option>
+                    <option value="Bản nháp">Bản nháp</option>
+                    <option value="Hết hiệu lực">Hết hiệu lực</option>
+                </select>
                 <label for="docsUpload" class="btn btn--primary" id="docsUploadLabel">+ Upload files</label>
                 <input type="file" id="docsUpload" name="files" multiple
                        accept=".pdf,.docx,.doc,.txt,.xlsx,.xls,.csv,.md,.png,.jpg,.jpeg"
@@ -97,8 +114,10 @@
                         </th>
                         <th><a href="@SortHref("name")" class="crumb-link">Name@(SortArrow("name"))</a></th>
                         <th><a href="@SortHref("size")" class="crumb-link">Size@(SortArrow("size"))</a></th>
-                        <th>Category</th>
-                        <th><a href="@SortHref("status")" class="crumb-link">Status@(SortArrow("status"))</a></th>
+                        <th>Phòng ban</th>
+                        <th>Loại</th>
+                        <th>Phạm vi</th>
+                        <th>Trạng thái</th>
                         <th><a href="@SortHref("chunks")" class="crumb-link">Chunks@(SortArrow("chunks"))</a></th>
                         <th><a href="@SortHref("uploaded")" class="crumb-link">Uploaded@(SortArrow("uploaded"))</a></th>
                         <th></th>
@@ -123,7 +142,21 @@
                                 }
                             </td>
                             <td>@FormatSize(d.Size)</td>
-                            <td><span class="category-tag">@d.Category</span></td>
+                            <td>@(string.IsNullOrEmpty(d.Department) ? "—" : d.Department)</td>
+                            <td>@(string.IsNullOrEmpty(d.DocType) ? "—" : d.DocType)</td>
+                            <td>@(string.IsNullOrEmpty(d.Scope) ? "—" : d.Scope)</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(d.Status))
+                                {
+                                    var statusCls = d.Status switch {
+                                        "Đang hiệu lực" => "status-done",
+                                        "Hết hiệu lực"  => "status-cancel",
+                                        _               => "status-unstart"
+                                    };
+                                    <span class="status-badge @statusCls">@d.Status</span>
+                                }
+                                else { <span>—</span> }
+                            </td>
                             <td>
                                 <span class="status-badge status-@d.RunStatus.ToLower()">
                                     @d.RunStatus

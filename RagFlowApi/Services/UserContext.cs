@@ -35,15 +35,14 @@ public class UserContext
         return _record;
     }
 
-    // Admins: null (no filter). Users: [Department, "General"]. No dept: ["General"].
-    public async Task<IReadOnlyList<string>?> GetAllowedCategoriesAsync()
+    // Admins: IsAdmin=true (no filtering). Users: IsAdmin=false + their department.
+    public async Task<DeptFilter> GetDeptFilterAsync()
     {
         var record = await GetRecordAsync();
-        if (record.IsAdmin) return null;
+        if (record.IsAdmin) return new DeptFilter(IsAdmin: true, Department: null);
         var dept = (record.Department ?? "").Trim();
-        return string.IsNullOrEmpty(dept)
-            ? (IReadOnlyList<string>)["General"]
-            : [dept, "General"];
+        return new DeptFilter(IsAdmin: false,
+            Department: string.IsNullOrEmpty(dept) ? null : dept);
     }
 
     // Returns the current user's dataset ID, creating a local UUID on first use.

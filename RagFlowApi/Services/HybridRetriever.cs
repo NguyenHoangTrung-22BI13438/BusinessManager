@@ -30,15 +30,15 @@ public class HybridRetriever
         int    topN                = 8,
         double bm25Weight          = 0.3,
         double similarityThreshold = 0.2,
-        IReadOnlyList<string>? allowedCategories = null)
+        DeptFilter? filter         = null)
     {
         // 1. Embed the query
         var qEmb = await _embedder.EmbedAsync(question);
 
         // 2. KNN and BM25 in parallel — fetch more candidates than topN for reranking
         int candidates = topN * 6;
-        var knnTask  = _store.SearchKnnAsync(datasetId,  qEmb,     candidates, allowedCategories);
-        var bm25Task = _store.SearchBm25Async(datasetId, question, candidates, allowedCategories);
+        var knnTask  = _store.SearchKnnAsync(datasetId,  qEmb,     candidates, filter);
+        var bm25Task = _store.SearchBm25Async(datasetId, question, candidates, filter);
         await Task.WhenAll(knnTask, bm25Task);
 
         var knnHits  = knnTask.Result;

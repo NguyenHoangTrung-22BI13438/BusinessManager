@@ -6,6 +6,7 @@ obj/
 *.user
 *.suo
 .vs/
+.claude/
 
 # Runtime data — never commit
 users.json

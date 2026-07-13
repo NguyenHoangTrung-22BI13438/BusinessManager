@@ -43,7 +43,10 @@ public sealed class ElasticsearchChunkStore
                 { "content",      new TextProperty() },
                 { "embedding",    new DenseVectorProperty { Dims = 1024, Index = true } },
                 { "keywords",     new KeywordProperty() },
-                { "category",     new KeywordProperty() },
+                { "department",   new KeywordProperty() },
+                { "docType",      new KeywordProperty() },
+                { "scope",        new KeywordProperty() },
+                { "status",       new KeywordProperty() },
             };
 
             await _es.Indices.CreateAsync(new Elastic.Clients.Elasticsearch.IndexManagement.CreateIndexRequest(Idx)
@@ -87,12 +90,12 @@ public sealed class ElasticsearchChunkStore
 
     public async Task<List<StoredChunk>> GetByDatasetAsync(
         string datasetId,
-        IReadOnlyList<string>? allowedCategories = null)
+        DeptFilter? filter = null)
     {
         var res = await _es.SearchAsync<ChunkDoc>(new SearchRequest(Idx)
         {
             Size  = 10000,
-            Query = BuildFilter(datasetId, allowedCategories)
+            Query = BuildFilter(datasetId, filter)
         });
         return res.Documents.Select(d => d.ToChunk()).ToList();
     }
@@ -117,22 +120,25 @@ public sealed class ElasticsearchChunkStore
         return res.Documents.Select(d => d.ToChunk()).ToList();
     }
 
-    public async Task<List<string>> GetCategoriesAsync()
+    // Returns { department → count } for the admin document list sidebar.
+    public async Task<Dictionary<string, long>> GetDepartmentCountsAsync()
     {
         var res = await _es.SearchAsync<ChunkDoc>(new SearchRequest(Idx)
         {
             Size         = 0,
             Aggregations = new Dictionary<string, Aggregation>
             {
-                { "cats", new TermsAggregation("cats") { Field = "category", Size = 100 } }
+                { "depts", new TermsAggregation("depts") { Field = "department", Size = 20 } }
             }
         });
 
-        if (res.Aggregations?.TryGetValue("cats", out var agg) == true
+        var result = new Dictionary<string, long>();
+        if (res.Aggregations?.TryGetValue("depts", out var agg) == true
             && agg is StringTermsAggregate terms)
-            return terms.Buckets.Select(b => b.Key.ToString()).OrderBy(c => c).ToList();
+            foreach (var b in terms.Buckets)
+                result[b.Key.ToString()] = b.DocCount;
 
-        return [];
+        return result;
     }
 
     public async Task<long> GetStoreSizeBytesAsync()
@@ -149,9 +155,9 @@ public sealed class ElasticsearchChunkStore
 
     public async Task<List<(StoredChunk Chunk, double Score)>> SearchKnnAsync(
         string datasetId, float[] queryVector, int k,
-        IReadOnlyList<string>? allowedCategories = null)
+        DeptFilter? filter = null)
     {
-        var filters = BuildFilterList(datasetId, allowedCategories);
+        var filters = BuildFilterList(datasetId, filter);
 
         var knnQuery = new KnnQuery
         {
@@ -175,9 +181,9 @@ public sealed class ElasticsearchChunkStore
 
     public async Task<List<(StoredChunk Chunk, double Score)>> SearchBm25Async(
         string datasetId, string text, int k,
-        IReadOnlyList<string>? allowedCategories = null)
+        DeptFilter? filter = null)
     {
-        var filters = BuildFilterList(datasetId, allowedCategories);
+        var filters = BuildFilterList(datasetId, filter);
 
         Query query = filters.Count == 0
             ? new MatchQuery("content") { Query = text }
@@ -200,25 +206,36 @@ public sealed class ElasticsearchChunkStore
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static Query BuildFilter(string datasetId, IReadOnlyList<string>? cats)
+    private static Query BuildFilter(string datasetId, DeptFilter? filter)
     {
-        var filters = BuildFilterList(datasetId, cats);
+        var filters = BuildFilterList(datasetId, filter);
         if (filters.Count == 1) return filters[0];
         return new BoolQuery { Filter = filters };
     }
 
-    private static List<Query> BuildFilterList(string datasetId, IReadOnlyList<string>? cats)
+    private static List<Query> BuildFilterList(string datasetId, DeptFilter? filter)
     {
         var filters = new List<Query>
         {
             new TermQuery("datasetId") { Value = datasetId }
         };
-        if (cats is { Count: > 0 })
-            filters.Add(new TermsQuery
-            {
-                Field = "category",
-                Terms = new TermsQueryField(cats.Select(FieldValue.String).ToArray())
-            });
+
+        // Admin sees everything; no further filtering needed.
+        if (filter is null || filter.IsAdmin) return filters;
+
+        // Non-admin: only Đang hiệu lực documents
+        filters.Add(new TermQuery("status") { Value = "Đang hiệu lực" });
+
+        // Visible if: scope = "Toàn công ty"  OR  department = user's dept
+        var shouldClauses = new List<Query>
+        {
+            new TermQuery("scope") { Value = "Toàn công ty" }
+        };
+        if (!string.IsNullOrWhiteSpace(filter.Department))
+            shouldClauses.Add(new TermQuery("department") { Value = filter.Department });
+
+        filters.Add(new BoolQuery { Should = shouldClauses, MinimumShouldMatch = 1 });
+
         return filters;
     }
 
@@ -233,7 +250,10 @@ public sealed class ElasticsearchChunkStore
         public string       Content      { get; set; } = "";
         public float[]      Embedding    { get; set; } = [];
         public List<string> Keywords     { get; set; } = [];
-        public string       Category     { get; set; } = "General";
+        public string       Department   { get; set; } = "";
+        public string       DocType      { get; set; } = "";
+        public string       Scope        { get; set; } = "";
+        public string       Status       { get; set; } = "";
 
         public static ChunkDoc From(StoredChunk c) => new()
         {
@@ -244,11 +264,15 @@ public sealed class ElasticsearchChunkStore
             Content      = c.Content,
             Embedding    = c.Embedding,
             Keywords     = c.Keywords,
-            Category     = c.Category
+            Department   = c.Department,
+            DocType      = c.DocType,
+            Scope        = c.Scope,
+            Status       = c.Status
         };
 
         public StoredChunk ToChunk() => new(
             Id, DatasetId, DocumentId, DocumentName,
-            Content, Embedding, Keywords, Category);
+            Content, Embedding, Keywords,
+            Department, DocType, Scope, Status);
     }
 }

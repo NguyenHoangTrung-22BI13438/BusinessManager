@@ -19,9 +19,9 @@ public class DocumentsModel : PageModel
     private readonly PendingDocumentStore _pending;
     private readonly IWebHostEnvironment _env;
 
-    public List<DocumentItem>    Documents        { get; private set; } = [];
-    public List<PendingDocument> PendingDocuments { get; private set; } = [];
-    public List<string>          KnownCategories  { get; private set; } = [];
+    public List<DocumentItem>           Documents        { get; private set; } = [];
+    public List<PendingDocument>        PendingDocuments { get; private set; } = [];
+    public Dictionary<string, long>     DeptCounts       { get; private set; } = [];
     public string CurrentSort { get; private set; } = "name";
     public string CurrentDir  { get; private set; } = "asc";
 
@@ -68,10 +68,13 @@ public class DocumentsModel : PageModel
                     TokenCount: 0,
                     Progress:   1.0,
                     CreateTime: 0,
-                    Category:   g.First().Category))
+                    Department: g.First().Department,
+                    DocType:    g.First().DocType,
+                    Scope:      g.First().Scope,
+                    Status:     g.First().Status))
                 .ToList();
-            Documents       = SortDocuments(docs, CurrentSort, CurrentDir);
-            KnownCategories = await _chunkStore.GetCategoriesAsync();
+            Documents  = SortDocuments(docs, CurrentSort, CurrentDir);
+            DeptCounts = await _chunkStore.GetDepartmentCountsAsync();
         }
         else
         {
@@ -145,12 +148,17 @@ public class DocumentsModel : PageModel
         return new JsonResult(new { jobs });
     }
 
-    public async Task<IActionResult> OnPostUploadAsync(List<IFormFile> files, string? category)
+    public async Task<IActionResult> OnPostUploadAsync(
+        List<IFormFile> files,
+        string? department, string? docType, string? scope, string? status)
     {
         if (files is null || files.Count == 0)
             return new JsonResult(new { jobs = Array.Empty<object>() });
 
-        var cat = string.IsNullOrWhiteSpace(category) ? "General" : category.Trim();
+        var dept  = (department ?? "").Trim();
+        var dtype = (docType    ?? "").Trim();
+        var scp   = (scope      ?? "").Trim();
+        var sts   = (status     ?? "").Trim();
 
         if (!User.IsInRole("admin"))
         {
@@ -172,7 +180,8 @@ public class DocumentsModel : PageModel
             var jobId = Guid.NewGuid().ToString("N");
             var ct = f.ContentType ?? "application/octet-stream";
             _store.Add(new JobStatus { JobId = jobId, FileName = f.FileName });
-            var job = new IngestionJob(jobId, datasetId, ms.ToArray(), f.FileName, ct, cat);
+            var job = new IngestionJob(jobId, datasetId, ms.ToArray(), f.FileName, ct,
+                dept, dtype, scp, sts);
             if (!_channel.Writer.TryWrite(job)) await _channel.Writer.WriteAsync(job);
             jobs.Add(new { jobId, fileName = f.FileName });
         }
